@@ -5,7 +5,10 @@
   var GG = window.GG;
   var GGStore = window.GGStore;
   var cfg = window.GG_CONFIG || {};
-  var LIVE = !!(cfg.FIREBASE && window.firebase && cfg.STUDENTS && cfg.STUDENTS.length);
+  var CONFIGURED = !!(cfg.FIREBASE && cfg.STUDENTS && cfg.STUDENTS.length);
+  // 설정은 있는데 Firebase를 못 불러왔으면 체험 모드로 바꾸지 않고 오류를 보여 준다 (예시 기록을 실제로 착각하지 않게)
+  var OFFLINE = CONFIGURED && !window.firebase;
+  var LIVE = CONFIGURED && !OFFLINE;
   var DEMO_NAMES = ['하늘', '도윤', '서연', '지호', '민준', '하린', '시우', '수아', '예준', '지안', '은우', '채원', '유준', '나윤', '건우', '소율'];
   var ROSTER = LIVE ? cfg.STUDENTS.slice() : DEMO_NAMES.map(function (n, i) { return { id: i + 1, name: n }; });
   var TEACHER_PW = LIVE ? String(cfg.TEACHER_PASSWORD || '') : '0000';
@@ -58,7 +61,7 @@
     return { players: pl, matches: ms, pins: pins, settings: Object.assign({}, GG.DEFAULT_SETTINGS) };
   }
 
-  var store = LIVE ? new GGStore.FirebaseStore(cfg) : new GGStore.LocalStore(demoSeed);
+  var store = OFFLINE ? null : LIVE ? new GGStore.FirebaseStore(cfg) : new GGStore.LocalStore(demoSeed);
 
   function loadPrefs() {
     try { return Object.assign({ sound: true }, JSON.parse(localStorage.getItem('gonggi-blox-prefs') || '{}')); }
@@ -187,6 +190,11 @@
     cache = null;
     var r = route();
     renderNav(r);
+    if (OFFLINE) {
+      main.innerHTML = '<div class="loading">' + logoMark() + '<h2>리그 서버에 연결하지 못했어요</h2><div>인터넷 연결을 확인하고 새로고침해 주세요. 학교 인터넷에서 www.gstatic.com 이 막혀 있으면 열리지 않아요.</div>' +
+        '<button class="btn" type="button" onclick="location.reload()">새로고침</button></div>';
+      return;
+    }
     if (!data) {
       main.innerHTML = '<div class="loading">' + logoMark() + '<div>리그 정보를 불러오는 중…</div></div>';
       return;
@@ -208,7 +216,8 @@
   /* 로비 */
   VIEWS.home = function () {
     var list = sorted();
-    var stage = list.slice(0, 3).map(function (p, k) {
+    var played = list.filter(function (p) { return p.wins + p.losses > 0; });
+    var stage = played.slice(0, 3).map(function (p, k) {
       var r = GG.getRank(p.points);
       return '<button class="champ champ-' + (k + 1) + '" type="button" data-profile="' + esc(p.id) + '">' + crest(r, k === 0 ? 72 : 52) + avatarFull(p) +
         '<span class="champ-place">' + ['1ST', '2ND', '3RD'][k] + '</span><span class="champ-name">' + esc(p.name) + '</span>' + lp(p.points) + '</button>';
@@ -227,7 +236,8 @@
       '<h1><span class="en gold-text">GONGGI LEGENDS</span>우리 반 최강의<br>공기 장인은 누구인가</h1>' +
       '<p>친구에게 도전하고 승리해 LP를 모으세요. 나보다 높은 티어를 쓰러뜨리면 더 큰 보상이 기다립니다.</p>' +
       '<div class="hero-actions"><a class="btn btn-play" href="#battle">PLAY <span class="ko">대결 시작</span></a><a class="link" href="#rank">전체 랭킹 →</a></div></div>' +
-      '<div class="hero-stage">' + stage + '</div></section>' +
+      '<div class="hero-stage">' + (stage || '<div class="champ" style="gap:8px">' + crest(GG.getRank(GG.TIERS[9].min), 130) +
+        '<span class="champ-place">Season ' + SEASON + ' Open</span><span class="champ-name" style="font-family:var(--font-title);font-size:20px;max-width:none">첫 승리의 주인공은?</span></div>') + '</div></section>' +
 
       '<div class="stat-strip"><div><b>' + ms.length + '</b><span>시즌 대결 수</span></div><div><b>' + todayCount + '</b><span>오늘 대결</span></div>' +
       '<div><b>' + upsets + '</b><span>역전승</span></div><div><b style="font-family:var(--font-title);font-size:22px;line-height:1.35">' + (highest ? highest.label : '-') + '</b><span>최고 티어</span></div></div>' +
@@ -810,8 +820,8 @@
   /* 위쪽 바 */
   document.getElementById('logo-slot').innerHTML = logoMark();
   var modeChip = document.getElementById('mode-chip');
-  modeChip.className = 'mode-chip ' + (LIVE ? 'live' : 'demo');
-  modeChip.innerHTML = '<i></i><span>' + (LIVE ? '체크리스트 연결됨' : '체험 모드') + '</span>';
+  modeChip.className = 'mode-chip ' + (LIVE ? 'live' : OFFLINE ? '' : 'demo');
+  modeChip.innerHTML = '<i></i><span>' + (LIVE ? '체크리스트 연결됨' : OFFLINE ? '연결 안 됨' : '체험 모드') + '</span>';
   var soundBtn = document.getElementById('sound-btn');
   function drawSound() {
     soundBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/>' +
@@ -824,6 +834,7 @@
   window.addEventListener('hashchange', function () { closeLayer(); render(); window.scrollTo(0, 0); });
 
   render();
+  if (OFFLINE) return;
   store.subscribe(function (d) { data = d; render(); },
     function () { toast('리그 정보를 불러오지 못했어요. Firestore 규칙에서 gonggi_ 컬렉션을 허용했는지 확인해 주세요.', true); });
 })();

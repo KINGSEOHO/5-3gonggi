@@ -15,7 +15,9 @@ let html = read('index.html')
 
 const i = process.argv.indexOf('--demo');
 if (i !== -1) {
-  html = html.replace(/<!--FIREBASE-->[\s\S]*?<!--\/FIREBASE-->/, '');
+  // 미리보기에는 실제 명단·접속 정보를 넣지 않고 체험 모드로만
+  html = html.replace(/<!--FIREBASE-->[\s\S]*?<!--\/FIREBASE-->/, '')
+    .replace(inline('js/config.js'), () => "<script>window.GG_CONFIG = { FIREBASE: null, STUDENTS: [], LEAGUE_NAME: '해바라기 리그', SEASON: 1 };</script>");
   const head = html.match(/<head>([\s\S]*?)<\/head>/)[1].replace(/<meta charset[^>]*>\s*|<meta name="viewport"[^>]*>\s*/g, '');
   const body = html.match(/<body>([\s\S]*?)<\/body>/)[1];
   fs.writeFileSync(process.argv[i + 1], head.trim() + '\n' + body.trim() + '\n');
