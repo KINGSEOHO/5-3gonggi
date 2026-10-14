@@ -5,6 +5,7 @@
  * 공통 인터페이스
  *   subscribe(cb)                    cb({ players: {이름: 저장된 값}, matches: [...오래된→최근], settings })
  *   record(winnerId, loserId, base)  base(id) = 저장된 값이 없을 때 쓸 기본 선수 → Promise<match>
+ *   addReport(winnerId, loserId) / removeReport(id)  각자 크롬북: 승자가 올리고 패자가 확인
  *   undoLast()                       → Promise<match>
  *   updatePlayer(id, fields)         → Promise
  *   getPin(id) / setPin(id, pin)     → Promise
@@ -44,9 +45,9 @@
   }
   FirebaseStore.prototype.subscribe = function (cb, onError) {
     var self = this, db = this.db;
-    var data = { players: {}, matches: [], settings: self.settings };
-    var ready = { p: false, m: false, s: false };
-    function emit() { if (ready.p && ready.m && ready.s) cb(data); }
+    var data = { players: {}, matches: [], settings: self.settings, reports: [] };
+    var ready = { p: false, m: false, s: false, r: false };
+    function emit() { if (ready.p && ready.m && ready.s && ready.r) cb(data); }
     var fail = function (e) { if (onError) onError(e); };
     db.collection('gonggi_players').onSnapshot(function (snap) {
       data.players = {};
@@ -62,13 +63,30 @@
       data.settings = self.settings;
       ready.s = true; emit();
     }, fail);
+    db.collection('gonggi_reports').onSnapshot(function (snap) {
+      data.reports = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+      ready.r = true; emit();
+    }, fail);
   };
-  FirebaseStore.prototype.record = function (winnerId, loserId, base) {
+  FirebaseStore.prototype.addReport = function (w, l) {
+    return this.db.collection('gonggi_reports').doc(w + '__' + l).set({ winner: w, loser: l, t: Date.now() });
+  };
+  FirebaseStore.prototype.removeReport = function (id) {
+    return this.db.collection('gonggi_reports').doc(id).delete();
+  };
+  /* opts.consume: 확인할 결과 신고 id (이미 처리됐으면 실패 → 같은 경기가 두 번 기록되지 않음)
+     opts.cleanup: 같이 지울 신고 id 목록 */
+  FirebaseStore.prototype.record = function (winnerId, loserId, base, opts) {
+    opts = opts || {};
     var db = this.db, settings = this.settings;
-    var col = db.collection('gonggi_players');
+    var col = db.collection('gonggi_players'), reps = db.collection('gonggi_reports');
     var wRef = col.doc(winnerId), lRef = col.doc(loserId), mRef = db.collection('gonggi_matches').doc();
+    var cRef = opts.consume ? reps.doc(opts.consume) : null;
     return db.runTransaction(function (tx) {
-      return Promise.all([tx.get(wRef), tx.get(lRef)]).then(function (docs) {
+      return Promise.all([tx.get(wRef), tx.get(lRef), cRef ? tx.get(cRef) : null]).then(function (docs) {
+        if (cRef && !docs[2].exists) throw new Error('이미 처리된 결과예요.');
+        if (cRef) tx.delete(cRef);
+        (opts.cleanup || []).forEach(function (id) { if (id !== opts.consume) tx.delete(reps.doc(id)); });
         var wp = Object.assign(base(winnerId), docs[0].exists ? docs[0].data() : {}, { id: winnerId });
         var lp = Object.assign(base(loserId), docs[1].exists ? docs[1].data() : {}, { id: loserId });
         var r = buildMatch(wp, lp, settings);
@@ -141,11 +159,24 @@
   }
   LocalStore.prototype._save = function () {
     try { localStorage.setItem(LOCAL_KEY, JSON.stringify(this.data)); } catch (e) { /* 무시 */ }
-    var snap = { players: this.data.players, matches: this.data.matches.slice(-300), settings: this.data.settings };
+    var reports = this.data.reports || {};
+    var snap = { players: this.data.players, matches: this.data.matches.slice(-300), settings: this.data.settings,
+      reports: Object.keys(reports).map(function (id) { return Object.assign({ id: id }, reports[id]); }) };
     this.listeners.forEach(function (cb) { cb(snap); });
   };
   LocalStore.prototype.subscribe = function (cb) { this.listeners.push(cb); this._save(); };
-  LocalStore.prototype.record = function (winnerId, loserId, base) {
+  LocalStore.prototype.addReport = function (w, l) {
+    this.data.reports = this.data.reports || {};
+    this.data.reports[w + '__' + l] = { winner: w, loser: l, t: Date.now() };
+    this._save(); return Promise.resolve();
+  };
+  LocalStore.prototype.removeReport = function (id) { if (this.data.reports) delete this.data.reports[id]; this._save(); return Promise.resolve(); };
+  LocalStore.prototype.record = function (winnerId, loserId, base, opts) {
+    opts = opts || {};
+    var R = this.data.reports = this.data.reports || {};
+    if (opts.consume && !R[opts.consume]) return Promise.reject(new Error('이미 처리된 결과예요.'));
+    if (opts.consume) delete R[opts.consume];
+    (opts.cleanup || []).forEach(function (id) { delete R[id]; });
     var P = this.data.players;
     var wp = Object.assign(base(winnerId), P[winnerId] || {}, { id: winnerId });
     var lp = Object.assign(base(loserId), P[loserId] || {}, { id: loserId });

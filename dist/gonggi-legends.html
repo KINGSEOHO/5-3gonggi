@@ -528,6 +528,18 @@ td { padding: 9px 10px; border-bottom: 1px solid rgba(38, 49, 73, .7); white-spa
   .roster { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
   h1 { font-size: 28px; }
 }
+
+/* ── 내 계정 / 결과 확인 알림 ── */
+.me-chip {
+  display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px 0 4px;
+  background: var(--deep); border: 1px solid var(--gold-lo); color: var(--gold-hi); font-weight: 700;
+}
+.me-chip:hover { border-color: var(--gold); }
+.me-chip span { max-width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inbox { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; padding: 14px 18px; }
+.inbox.incoming { border-color: var(--gold); box-shadow: 0 0 24px rgba(200, 170, 110, .25), inset 0 0 30px rgba(200, 170, 110, .08); animation: glow-pulse 2s ease-in-out infinite; }
+@keyframes glow-pulse { 50% { box-shadow: 0 0 34px rgba(200, 170, 110, .45), inset 0 0 30px rgba(200, 170, 110, .14); } }
+@media (max-width: 480px) { .me-chip span { display: none; } .me-chip { padding: 0 4px; } }
 </style>
 </head>
 <body>
@@ -540,6 +552,7 @@ td { padding: 9px 10px; border-bottom: 1px solid rgba(38, 49, 73, .7); white-spa
     <nav class="mainnav" id="nav" aria-label="메뉴"></nav>
     <div class="top-right">
       <span class="mode-chip" id="mode-chip"></span>
+      <span id="me-slot"></span>
       <button class="icon-btn" id="sound-btn" type="button" aria-label="효과음 켜기/끄기"></button>
     </div>
   </div>
@@ -790,6 +803,7 @@ window.GG_CONFIG = {
  * 공통 인터페이스
  *   subscribe(cb)                    cb({ players: {이름: 저장된 값}, matches: [...오래된→최근], settings })
  *   record(winnerId, loserId, base)  base(id) = 저장된 값이 없을 때 쓸 기본 선수 → Promise<match>
+ *   addReport(winnerId, loserId) / removeReport(id)  각자 크롬북: 승자가 올리고 패자가 확인
  *   undoLast()                       → Promise<match>
  *   updatePlayer(id, fields)         → Promise
  *   getPin(id) / setPin(id, pin)     → Promise
@@ -829,9 +843,9 @@ window.GG_CONFIG = {
   }
   FirebaseStore.prototype.subscribe = function (cb, onError) {
     var self = this, db = this.db;
-    var data = { players: {}, matches: [], settings: self.settings };
-    var ready = { p: false, m: false, s: false };
-    function emit() { if (ready.p && ready.m && ready.s) cb(data); }
+    var data = { players: {}, matches: [], settings: self.settings, reports: [] };
+    var ready = { p: false, m: false, s: false, r: false };
+    function emit() { if (ready.p && ready.m && ready.s && ready.r) cb(data); }
     var fail = function (e) { if (onError) onError(e); };
     db.collection('gonggi_players').onSnapshot(function (snap) {
       data.players = {};
@@ -847,13 +861,30 @@ window.GG_CONFIG = {
       data.settings = self.settings;
       ready.s = true; emit();
     }, fail);
+    db.collection('gonggi_reports').onSnapshot(function (snap) {
+      data.reports = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+      ready.r = true; emit();
+    }, fail);
   };
-  FirebaseStore.prototype.record = function (winnerId, loserId, base) {
+  FirebaseStore.prototype.addReport = function (w, l) {
+    return this.db.collection('gonggi_reports').doc(w + '__' + l).set({ winner: w, loser: l, t: Date.now() });
+  };
+  FirebaseStore.prototype.removeReport = function (id) {
+    return this.db.collection('gonggi_reports').doc(id).delete();
+  };
+  /* opts.consume: 확인할 결과 신고 id (이미 처리됐으면 실패 → 같은 경기가 두 번 기록되지 않음)
+     opts.cleanup: 같이 지울 신고 id 목록 */
+  FirebaseStore.prototype.record = function (winnerId, loserId, base, opts) {
+    opts = opts || {};
     var db = this.db, settings = this.settings;
-    var col = db.collection('gonggi_players');
+    var col = db.collection('gonggi_players'), reps = db.collection('gonggi_reports');
     var wRef = col.doc(winnerId), lRef = col.doc(loserId), mRef = db.collection('gonggi_matches').doc();
+    var cRef = opts.consume ? reps.doc(opts.consume) : null;
     return db.runTransaction(function (tx) {
-      return Promise.all([tx.get(wRef), tx.get(lRef)]).then(function (docs) {
+      return Promise.all([tx.get(wRef), tx.get(lRef), cRef ? tx.get(cRef) : null]).then(function (docs) {
+        if (cRef && !docs[2].exists) throw new Error('이미 처리된 결과예요.');
+        if (cRef) tx.delete(cRef);
+        (opts.cleanup || []).forEach(function (id) { if (id !== opts.consume) tx.delete(reps.doc(id)); });
         var wp = Object.assign(base(winnerId), docs[0].exists ? docs[0].data() : {}, { id: winnerId });
         var lp = Object.assign(base(loserId), docs[1].exists ? docs[1].data() : {}, { id: loserId });
         var r = buildMatch(wp, lp, settings);
@@ -926,11 +957,24 @@ window.GG_CONFIG = {
   }
   LocalStore.prototype._save = function () {
     try { localStorage.setItem(LOCAL_KEY, JSON.stringify(this.data)); } catch (e) { /* 무시 */ }
-    var snap = { players: this.data.players, matches: this.data.matches.slice(-300), settings: this.data.settings };
+    var reports = this.data.reports || {};
+    var snap = { players: this.data.players, matches: this.data.matches.slice(-300), settings: this.data.settings,
+      reports: Object.keys(reports).map(function (id) { return Object.assign({ id: id }, reports[id]); }) };
     this.listeners.forEach(function (cb) { cb(snap); });
   };
   LocalStore.prototype.subscribe = function (cb) { this.listeners.push(cb); this._save(); };
-  LocalStore.prototype.record = function (winnerId, loserId, base) {
+  LocalStore.prototype.addReport = function (w, l) {
+    this.data.reports = this.data.reports || {};
+    this.data.reports[w + '__' + l] = { winner: w, loser: l, t: Date.now() };
+    this._save(); return Promise.resolve();
+  };
+  LocalStore.prototype.removeReport = function (id) { if (this.data.reports) delete this.data.reports[id]; this._save(); return Promise.resolve(); };
+  LocalStore.prototype.record = function (winnerId, loserId, base, opts) {
+    opts = opts || {};
+    var R = this.data.reports = this.data.reports || {};
+    if (opts.consume && !R[opts.consume]) return Promise.reject(new Error('이미 처리된 결과예요.'));
+    if (opts.consume) delete R[opts.consume];
+    (opts.cleanup || []).forEach(function (id) { delete R[id]; });
     var P = this.data.players;
     var wp = Object.assign(base(winnerId), P[winnerId] || {}, { id: winnerId });
     var lp = Object.assign(base(loserId), P[loserId] || {}, { id: loserId });
@@ -1225,7 +1269,15 @@ window.GG_CONFIG = {
   ];
 
   var data = null;            // 저장소에서 받은 값
+  var seen = {}, firstLoad = true; // 이미 본 대결 (다른 크롬북에서 확정된 내 대결 알림용)
   var ui = { a: null, b: null, rankFilter: 'all', pairs: null, teacher: false, busy: false };
+  /* 이 크롬북의 주인 (로그인한 학생). 각자 크롬북에서 쓰는 걸 기본으로 한다 */
+  var ME_KEY = LIVE ? 'gonggi-me' : 'gonggi-me-demo';
+  var me = null;
+  try { me = localStorage.getItem(ME_KEY); } catch (e) { me = null; }
+  if (me && !ROSTER.some(function (st) { return st.name === me; })) me = null;
+  function setMe(id) { me = id; try { if (id) localStorage.setItem(ME_KEY, id); else localStorage.removeItem(ME_KEY); } catch (e) { /* 무시 */ } render(); }
+  function personal() { return !!me && !ui.teacher; }
   var uid = 0;
   var prefs = loadPrefs();
 
@@ -1397,7 +1449,8 @@ window.GG_CONFIG = {
       main.innerHTML = '<div class="loading">' + logoMark() + '<div>리그 정보를 불러오는 중…</div></div>';
       return;
     }
-    main.innerHTML = '<div class="page">' + VIEWS[r]() + '</div>';
+    drawMe();
+    main.innerHTML = '<div class="page">' + inbox() + VIEWS[r]() + '</div>';
   }
   function renderNav(active) {
     document.getElementById('nav').innerHTML = NAV.map(function (n) {
@@ -1407,6 +1460,27 @@ window.GG_CONFIG = {
   function demoBanner() {
     if (LIVE) return '';
     return '<div class="demo-banner"><div><b>체험 모드</b> <span class="muted">· 예시 선수와 기록이 들어 있어요. 학생 비밀번호와 선생님 비밀번호는 모두 <b class="num">0000</b>이에요. 체크리스트와 연결하면 실제 우리 반 명단으로 바뀌어요.</span></div></div>';
+  }
+
+  function reports() { return (data && data.reports) || []; }
+  /* 나에게 온 결과 확인 요청과 내가 보낸 요청 */
+  function inbox() {
+    if (!me) return '';
+    var html = '';
+    reports().forEach(function (rp) {
+      var w = byId(rp.winner), l = byId(rp.loser);
+      if (!w || !l) return;
+      if (rp.loser === me) {
+        var pv = GG.calcMatch(w.points, l.points, w.streak > 0 ? w.streak : 0, settings());
+        html += '<section class="panel gilded inbox incoming"><div class="who">' + headshot(w, 44) + '<span><span class="eyebrow">Result Check</span><b style="display:block;font-size:17px">' + esc(w.name) + '이(가) 이겼다고 기록했어요</b>' +
+          '<span class="sub">맞으면 결과가 기록돼요 · 나 <span class="down">−' + pv.loss + ' LP</span> · ' + esc(w.name) + ' <span class="up">+' + pv.total + ' LP</span></span></span></div>' +
+          '<div class="row-actions"><button class="btn btn-ghost" type="button" data-act="report-reject" data-id="' + esc(rp.id) + '">아니에요</button><button class="btn btn-gold" type="button" data-act="report-accept" data-id="' + esc(rp.id) + '">맞아요, 졌어요</button></div></section>';
+      } else if (rp.winner === me) {
+        html += '<section class="panel inbox"><div class="who">' + headshot(l, 36) + '<span><b>' + esc(l.name) + '의 확인을 기다리는 중</b><span class="sub">' + esc(l.name) + '이(가) 자기 크롬북에서 "맞아요"를 누르면 기록돼요</span></span></div>' +
+          '<button class="btn btn-sm btn-ghost" type="button" data-act="report-reject" data-id="' + esc(rp.id) + '">취소</button></section>';
+      }
+    });
+    return html;
   }
 
   var VIEWS = {};
@@ -1499,6 +1573,12 @@ window.GG_CONFIG = {
 
   /* 대결 */
   VIEWS.battle = function () {
+    if (!me && !ui.teacher) {
+      return '<div class="page-head"><div><span class="eyebrow">Match Lobby</span><h1>대결</h1></div></div>' +
+        '<section class="panel gilded empty"><h2>먼저 로그인해 주세요</h2><p style="margin:0">내 이름을 고르고 해바라기 체크리스트와 같은 비밀번호를 넣으면 이 크롬북에서 계속 로그인돼 있어요.</p>' +
+        '<button class="btn btn-gold" type="button" data-act="login">로그인</button><p style="margin:0;font-size:13px">한 화면에서 여러 명이 기록하려면 선생님 메뉴를 열어 주세요.</p></section>';
+    }
+    if (personal()) { ui.a = me; if (ui.b === me) ui.b = null; }
     var a = ui.a && byId(ui.a), b = ui.b && byId(ui.b);
     var pv = a && b ? GG.preview(a, b, settings()) : null;
 
@@ -1506,24 +1586,27 @@ window.GG_CONFIG = {
       var head = '<span class="side-label">' + label + '</span>';
       if (!p) {
         return '<div class="side ' + cls + '">' + head + '<div class="side-empty"><div class="empty-slot">?</div>' +
-          '<button class="btn" type="button" data-pickside="' + key + '">선수 선택</button>' +
+          '<button class="btn" type="button" data-pickside="' + key + '">' + (personal() ? '상대 고르기' : '선수 선택') + '</button>' +
           (key === 'b' && a ? '<span style="font-size:13px">아래 추천 상대를 눌러도 돼요</span>' : '') + '</div></div>';
       }
       var r = GG.getRank(p.points), mine = pv ? pv[key] : null;
+      var fixed = personal() && key === 'a';
       return '<div class="side ' + cls + '">' + head +
         '<div class="side-glow" style="background:radial-gradient(circle,' + r.tier.color + '66,transparent 65%)"></div>' +
         avatarFull(p) + '<div class="side-name">' + esc(p.name) + '</div>' +
         '<div class="tier-tag">' + crest(r, 40) + '<span>' + r.label + '</span></div>' +
         '<div>' + lp(p.points) + ' ' + streakPill(p) + '</div>' +
         (mine ? '<div class="stakes"><span class="stake up">승리 +' + mine.win + '</span><span class="stake down">패배 −' + mine.lose + '</span></div>' : '') +
-        '<button class="btn btn-sm btn-ghost" type="button" data-pickside="' + key + '">선수 바꾸기</button></div>';
+        (fixed ? '<span class="pill pill-hex">나</span>' : '<button class="btn btn-sm btn-ghost" type="button" data-pickside="' + key + '">' + (personal() ? '상대 바꾸기' : '선수 바꾸기') + '</button>') + '</div>';
     }
 
-    var html = '<div class="page-head"><div><span class="eyebrow">Match Lobby</span><h1>대결</h1><p>두 선수를 고르고 공기 대결을 펼치세요. 끝나면 이긴 쪽을 누르고, 진 친구가 비밀번호로 결과를 확인해요.</p></div>' +
-      '<button class="btn" type="button" data-act="make-pairs">오늘의 대진표</button></div>';
-    if (ui.pairs) html += pairsView();
-    html += '<div class="arena">' + side(a, 'a', 'blue', 'BLUE') +
-      '<div class="vs"><div class="vs-text">VS</div>' + (a || b ? '<button class="btn btn-sm" type="button" data-act="swap" aria-label="양쪽 바꾸기">⇄</button>' : '') + '</div>' +
+    var html = '<div class="page-head"><div><span class="eyebrow">Match Lobby</span><h1>대결</h1><p>' + (personal()
+        ? '상대를 고르고 공기 대결을 펼치세요. 이겼으면 "내가 이겼어요"를 누르고, 진 친구가 자기 크롬북에서 확인하면 기록돼요.'
+        : '선생님 모드 · 한 화면에서 두 선수를 고르고, 이긴 쪽을 누르면 진 친구가 비밀번호로 확인해요.') + '</p></div>' +
+      (personal() ? '</div>' : '<button class="btn" type="button" data-act="make-pairs">오늘의 대진표</button></div>');
+    if (ui.pairs && !personal()) html += pairsView();
+    html += '<div class="arena">' + side(a, 'a', 'blue', personal() ? 'ME' : 'BLUE') +
+      '<div class="vs"><div class="vs-text">VS</div>' + (!personal() && (a || b) ? '<button class="btn btn-sm" type="button" data-act="swap" aria-label="양쪽 바꾸기">⇄</button>' : '') + '</div>' +
       side(b, 'b', 'red', 'RED') + '</div>';
 
     if (pv) {
@@ -1531,9 +1614,13 @@ window.GG_CONFIG = {
       html += '<section class="panel gilded section"><div class="odds"><div class="odds-bar"><span style="flex:' + ca + '"></span><span style="flex:' + (100 - ca) + '"></span></div>' +
         '<div class="odds-label"><span>' + esc(a.name) + ' 예상 승률 <b class="num">' + ca + '%</b></span><span><b class="num">' + (100 - ca) + '%</b> ' + esc(b.name) + '</span></div></div>' +
         '<p class="muted" style="margin:0">' + matchHint(a, b, pv) + '</p>' +
-        '<h3 style="text-align:center;letter-spacing:.1em;color:var(--gold)">누가 이겼나요?</h3>' +
-        '<div class="decide"><button class="btn btn-side blue" type="button" data-win="a">' + esc(a.name) + ' 승리</button>' +
-        '<button class="btn btn-side red" type="button" data-win="b">' + esc(b.name) + ' 승리</button></div></section>';
+        '<h3 style="text-align:center;letter-spacing:.1em;color:var(--gold)">' + (personal() ? '대결 결과는?' : '누가 이겼나요?') + '</h3>' +
+        (personal()
+          ? '<div class="decide"><button class="btn btn-side blue" type="button" data-act="report-win">내가 이겼어요</button>' +
+            '<button class="btn btn-side red" type="button" data-act="report-loss">내가 졌어요</button></div>' +
+            '<p class="muted" style="margin:0;font-size:13px;text-align:center">이긴 쪽이 누르면 진 친구 크롬북에 확인 요청이 가요. 진 쪽이 "내가 졌어요"를 누르면 바로 기록돼요. 한 판은 한 번만 기록돼요.</p>'
+          : '<div class="decide"><button class="btn btn-side blue" type="button" data-win="a">' + esc(a.name) + ' 승리</button>' +
+            '<button class="btn btn-side red" type="button" data-win="b">' + esc(b.name) + ' 승리</button></div>') + '</section>';
     }
     html += a ? recommendView(a) : '<section class="panel section"><h2>상대 추천</h2><p class="muted" style="margin:0">BLUE 선수를 먼저 고르면 딱 맞는 상대를 추천해 드려요.</p></section>';
     return html;
@@ -1643,6 +1730,9 @@ window.GG_CONFIG = {
       '<label class="check"><input type="checkbox" id="set-streak"' + (s.streakBonus ? ' checked' : '') + '> 연승 보너스</label>' +
       '<div class="row-actions"><button class="btn btn-gold" type="button" data-act="save-settings">규칙 저장</button></div>' +
       '<p class="muted" style="margin:0;font-size:13px">얻는 LP를 잃는 LP보다 크게 두면 대결을 많이 할수록 반 전체가 조금씩 올라가요.</p></section>' +
+      '<section class="panel gilded section"><h2>링크 나눠주기</h2><p class="muted" style="margin:0;font-size:14px">아이들이 크롬북으로 이 주소에 들어오면 돼요. 클래스룸에 올리거나 QR 코드를 화면에 띄워 주세요.</p>' +
+      '<input class="input" id="share-url" readonly value="' + esc(location.origin + location.pathname) + '" aria-label="앱 주소">' +
+      '<div class="row-actions" style="justify-content:flex-start"><button class="btn" type="button" data-act="copy-url">주소 복사</button><button class="btn" type="button" data-act="show-qr">QR 코드 크게 보기</button></div></section>' +
       '<section class="panel section"><h2>백업</h2><p class="muted" style="margin:0;font-size:14px">지금 점수와 기록을 글자로 복사해 보관해요.</p>' +
       '<div class="row-actions" style="justify-content:flex-start"><button class="btn" type="button" data-act="copy-backup">백업 코드 복사</button></div>' +
       '<textarea class="input" id="backup-text" style="min-height:60px" readonly aria-label="백업 코드"></textarea></section>' +
@@ -1656,13 +1746,15 @@ window.GG_CONFIG = {
   function openLayer(html) { layer.innerHTML = '<div class="overlay" data-backdrop>' + html + '</div>'; }
 
   function openPicker(sideKey) {
-    var other = sideKey === 'a' ? ui.b : ui.a;
-    openLayer('<div class="modal modal-wide" role="dialog" aria-modal="true" aria-label="선수 선택"><div class="modal-head"><div><span class="eyebrow">' + (sideKey === 'a' ? 'Blue' : 'Red') + ' Side</span><h2>선수 선택</h2></div>' +
+    var login = sideKey === 'login';
+    var other = login ? null : sideKey === 'a' ? ui.b : ui.a;
+    var list = login ? players().slice() : sorted();
+    openLayer('<div class="modal modal-wide" role="dialog" aria-modal="true" aria-label="' + (login ? '내 이름 고르기' : '선수 선택') + '"><div class="modal-head"><div><span class="eyebrow">' + (login ? 'Sign In' : sideKey === 'a' ? 'Blue Side' : 'Red Side') + '</span><h2>' + (login ? '내 이름을 골라요' : '선수 선택') + '</h2></div>' +
       '<button class="icon-btn" type="button" data-act="close" aria-label="닫기">✕</button></div><div class="roster">' +
-      sorted().map(function (p, i) {
-        var r = GG.getRank(p.points), off = p.id === other || p.away;
+      list.map(function (p, i) {
+        var r = GG.getRank(p.points), off = !login && (p.id === other || p.away);
         return '<button class="card" type="button" data-choose="' + esc(p.id) + '" data-side="' + sideKey + '"' + (off ? ' disabled' : '') + '>' +
-          '<div class="card-stage" style="background:' + tierGlow(r) + '"><span class="card-pos">' + (i + 1) + '</span>' + crest(r, 34) + avatarFull(p) + '</div>' +
+          '<div class="card-stage" style="background:' + tierGlow(r) + '"><span class="card-pos">' + (login ? p.no : i + 1) + '</span>' + crest(r, 34) + avatarFull(p) + '</div>' +
           '<span class="card-name">' + esc(p.name) + '</span><span class="card-tier">' + (p.away ? '쉬는 중' : r.label) + '</span></button>';
       }).join('') + '</div></div>');
   }
@@ -1892,7 +1984,7 @@ window.GG_CONFIG = {
     verifyStudent(l.id, l.name + '의 패배 확인', '<b>' + esc(w.name) + '</b> 승리를 기록할게요. 진 친구 <b>' + esc(l.name) + '</b>이(가) 비밀번호를 넣어 주세요.', function () {
       ui.busy = true;
       store.record(w.id, l.id, baseStats).then(function (m) {
-        ui.busy = false;
+        ui.busy = false; seen[m.id] = true;
         if (ui.pairs && ui.pairs.current != null) { ui.pairs.done[ui.pairs.current] = true; ui.pairs.current = null; render(); }
         showResult(m);
       }, fail);
@@ -1907,8 +1999,14 @@ window.GG_CONFIG = {
     var d = el.dataset;
     if (d.profile) return openProfile(d.profile);
     if (d.filter) { ui.rankFilter = d.filter; return render(); }
-    if (d.pickside) return openPicker(d.pickside);
-    if (d.choose) { ui[d.side] = d.choose; closeLayer(); return render(); }
+    if (d.pickside) { if (personal() && d.pickside === 'a') return; return openPicker(d.pickside); }
+    if (d.choose) {
+      if (d.side === 'login') {
+        var who0 = d.choose; closeLayer();
+        return verifyStudent(who0, who0 + ' 로그인', '해바라기 체크리스트와 같은 비밀번호 4자리를 넣어 주세요.', function () { setMe(who0); toast(who0 + ' 로그인했어요'); });
+      }
+      ui[d.side] = d.choose; closeLayer(); return render();
+    }
     if (d.opp) { ui.b = d.opp; render(); return scrollToArena(); }
     if (d.pair) {
       var pr = ui.pairs.pairs[+d.pair];
@@ -1924,6 +2022,52 @@ window.GG_CONFIG = {
     }
     switch (d.act) {
       case 'close': closeLayer(); break;
+      case 'login': openPicker('login'); break;
+      case 'copy-url':
+        var u = document.getElementById('share-url');
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(u.value).then(function () { toast('주소를 복사했어요'); }, function () { u.select(); });
+        else u.select();
+        break;
+      case 'show-qr':
+        var url = location.origin + location.pathname;
+        openLayer('<div class="modal pin-wrap" role="dialog" aria-modal="true" aria-label="QR 코드"><span class="eyebrow">Join the League</span><h2>크롬북 카메라로 찍어요</h2>' +
+          '<div id="qr" style="background:#fff;padding:16px"></div><div class="num" style="font-size:18px;word-break:break-all">' + esc(url) + '</div><button class="btn btn-gold" type="button" data-act="close">닫기</button></div>');
+        var draw = function () { try { new window.QRCode(document.getElementById('qr'), { text: url, width: 320, height: 320 }); } catch (e) { document.getElementById('qr').textContent = 'QR 코드를 만들지 못했어요. 주소를 복사해 주세요.'; } };
+        if (window.QRCode) draw();
+        else { var sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'; sc.onload = draw; sc.onerror = draw; document.head.appendChild(sc); }
+        break;
+      case 'me-menu':
+        openLayer('<div class="modal modal-sm pin-wrap" role="dialog" aria-modal="true" aria-label="내 계정"><div class="profile-stage" style="width:100%;height:170px;background:' + tierGlow(GG.getRank(byId(me).points)) + '">' + avatarFull(byId(me)) + '</div><h2>' + esc(me) + '</h2>' +
+          '<div class="row-actions" style="justify-content:center"><button class="btn" type="button" data-profile="' + esc(me) + '">내 프로필</button>' +
+          '<button class="btn" type="button" data-act="customize" data-id="' + esc(me) + '">꾸미기</button><button class="btn btn-danger" type="button" data-act="logout">로그아웃</button></div>' +
+          '<p class="muted" style="margin:0;font-size:13px">친구 크롬북으로 로그인했다면 꼭 로그아웃해 주세요.</p></div>');
+        break;
+      case 'logout': closeLayer(); ui.a = ui.b = null; setMe(null); toast('로그아웃했어요'); break;
+      case 'report-win':
+        var opp = byId(ui.b);
+        if (!opp || ui.busy) break;
+        var dup = matches().filter(function (m) { return m.a === me && m.b === opp.id && Date.now() - m.t < 5 * 60000; })[0];
+        if (dup) { toast('방금 ' + opp.name + '이(가) 이미 결과를 기록했어요'); break; }
+        store.addReport(me, opp.id).then(function () { toast(opp.name + '의 크롬북에 확인 요청을 보냈어요'); }, fail);
+        break;
+      case 'report-loss':
+        var winner = byId(ui.b);
+        if (!winner || ui.busy) break;
+        ask(winner.name + '에게 졌나요?', '결과가 바로 기록되고 내 LP가 내려가요.', '네, 졌어요', function () {
+          ui.busy = true;
+          var pairIds = reports().filter(function (rp) { return (rp.winner === winner.id && rp.loser === me) || (rp.winner === me && rp.loser === winner.id); }).map(function (rp) { return rp.id; });
+          store.record(winner.id, me, baseStats, { cleanup: pairIds }).then(function (m) { ui.busy = false; seen[m.id] = true; showResult(m); }, fail);
+        });
+        break;
+      case 'report-accept':
+        var rp0 = reports().filter(function (x) { return x.id === d.id; })[0];
+        if (!rp0 || ui.busy) break;
+        ui.busy = true;
+        store.record(rp0.winner, rp0.loser, baseStats, { consume: rp0.id }).then(function (m) { ui.busy = false; seen[m.id] = true; showResult(m); }, fail);
+        break;
+      case 'report-reject':
+        store.removeReport(d.id).then(function () { toast('요청을 지웠어요'); }, fail);
+        break;
       case 'swap': var t = ui.a; ui.a = ui.b; ui.b = t; render(); break;
       case 'make-pairs':
         var res = GG.autoPair(players(), matches());
@@ -1943,6 +2087,7 @@ window.GG_CONFIG = {
         break;
       case 'customize':
         var who = byId(d.id);
+        if (who.id === me) { openCustomize(who.id); break; }
         verifyStudent(who.id, who.name + ' 확인', '내 캐릭터는 나만 꾸밀 수 있어요. 비밀번호를 넣어 주세요.', function () { openCustomize(who.id); });
         break;
       case 'save-look':
@@ -2020,6 +2165,14 @@ window.GG_CONFIG = {
   var modeChip = document.getElementById('mode-chip');
   modeChip.className = 'mode-chip ' + (LIVE ? 'live' : OFFLINE ? '' : 'demo');
   modeChip.innerHTML = '<i></i><span>' + (LIVE ? '체크리스트 연결됨' : OFFLINE ? '연결 안 됨' : '체험 모드') + '</span>';
+  var meSlot = document.getElementById('me-slot');
+  function drawMe() {
+    if (OFFLINE || !meSlot) return;
+    var p = me && data ? byId(me) : null;
+    meSlot.innerHTML = me
+      ? '<button class="me-chip" type="button" data-act="me-menu">' + (p ? headshot(p, 30) : '') + '<span>' + esc(me) + '</span></button>'
+      : '<button class="btn btn-sm btn-gold" type="button" data-act="login">로그인</button>';
+  }
   var soundBtn = document.getElementById('sound-btn');
   function drawSound() {
     soundBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/>' +
@@ -2033,7 +2186,17 @@ window.GG_CONFIG = {
 
   render();
   if (OFFLINE) return;
-  store.subscribe(function (d) { data = d; render(); },
+  /* 내 대결이 다른 크롬북에서 확정되면 내 화면에도 결과를 띄운다 */
+  store.subscribe(function (d) {
+    var fresh = [];
+    (d.matches || []).forEach(function (m) {
+      if (!seen[m.id] && !firstLoad && me && (m.a === me || m.b === me)) fresh.push(m);
+      seen[m.id] = true;
+    });
+    firstLoad = false;
+    data = d; render();
+    if (fresh.length && !layer.querySelector('.result')) showResult(fresh[fresh.length - 1]);
+  },
     function () { toast('리그 정보를 불러오지 못했어요. Firestore 규칙에서 gonggi_ 컬렉션을 허용했는지 확인해 주세요.', true); });
 })();
 </script>

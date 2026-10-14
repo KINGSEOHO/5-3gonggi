@@ -516,3 +516,15 @@ td { padding: 9px 10px; border-bottom: 1px solid rgba(38, 49, 73, .7); white-spa
   .roster { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
   h1 { font-size: 28px; }
 }
+
+/* ── 내 계정 / 결과 확인 알림 ── */
+.me-chip {
+  display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px 0 4px;
+  background: var(--deep); border: 1px solid var(--gold-lo); color: var(--gold-hi); font-weight: 700;
+}
+.me-chip:hover { border-color: var(--gold); }
+.me-chip span { max-width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inbox { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; padding: 14px 18px; }
+.inbox.incoming { border-color: var(--gold); box-shadow: 0 0 24px rgba(200, 170, 110, .25), inset 0 0 30px rgba(200, 170, 110, .08); animation: glow-pulse 2s ease-in-out infinite; }
+@keyframes glow-pulse { 50% { box-shadow: 0 0 34px rgba(200, 170, 110, .45), inset 0 0 30px rgba(200, 170, 110, .14); } }
+@media (max-width: 480px) { .me-chip span { display: none; } .me-chip { padding: 0 4px; } }
