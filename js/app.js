@@ -474,10 +474,11 @@
       (LIVE ? '해바라기 체크리스트와 연결됨 · 학생 ' + ROSTER.length + '명 · 비밀번호 공유' : '체험 모드 · 이 브라우저에만 저장돼요') + '</p></div>' +
       '<button class="btn btn-ghost" type="button" data-act="teacher-logout">잠그기</button></div>' +
       '<div class="grid-2"><section class="panel section"><h2>선수 명단</h2><p class="muted" style="margin:0;font-size:14px">' +
-      (LIVE ? '명단은 체크리스트와 같아요. 바꾸려면 js/config.js의 STUDENTS를 고쳐 주세요.' : '체험용 예시 명단이에요.') + ' 결석한 친구는 쉬는 중으로 두면 추천과 대진표에서 빠져요.</p>' +
+      (LIVE ? '명단은 체크리스트와 같아요. 바꾸려면 js/config.js의 STUDENTS를 고쳐 주세요.' : '체험용 예시 명단이에요.') + ' <b>추천에 자주</b>를 켠 친구는 다른 아이들 추천 상대에 더 자주 나와요(아이들 화면에는 표시되지 않아요). 결석한 친구는 쉬는 중으로 두면 추천과 대진표에서 빠져요.</p>' +
       '<div class="feed">' + list.map(function (p) {
         var r = GG.getRank(p.points);
         return '<div class="feed-row">' + headshot(p, 34) + '<div class="feed-text"><b>' + p.no + '. ' + esc(p.name) + '</b><div class="feed-time">' + r.label + ' · ' + p.points + ' LP · ' + p.wins + '승 ' + p.losses + '패</div></div>' +
+          '<label class="check" style="font-size:13px"><input type="checkbox" data-boost="' + esc(p.id) + '"' + ((settings().boost || []).indexOf(p.id) !== -1 ? ' checked' : '') + '> 추천에 자주</label>' +
           '<label class="check" style="font-size:13px"><input type="checkbox" data-away="' + esc(p.id) + '"' + (p.away ? ' checked' : '') + '> 쉬는 중</label></div>';
       }).join('') + '</div></section>' +
       '<div class="section"><section class="panel gilded section"><h2>LP 규칙</h2>' +
@@ -882,12 +883,12 @@
         break;
       case 'teacher-logout': ui.teacher = false; render(); break;
       case 'save-settings':
-        store.saveSettings({
+        store.saveSettings(Object.assign({}, settings(), {
           winBase: Math.max(5, Math.min(100, parseInt(document.getElementById('set-win').value, 10) || 25)),
           lossBase: Math.max(0, Math.min(100, parseInt(document.getElementById('set-loss').value, 10) || 0)),
           startPoints: parseInt(document.getElementById('set-start').value, 10) || 0,
           streakBonus: document.getElementById('set-streak').checked
-        }).then(function () { toast('규칙을 저장했어요'); }, fail);
+        })).then(function () { toast('규칙을 저장했어요'); }, fail);
         break;
       case 'copy-backup':
         var code = JSON.stringify({ app: 'gonggi-blox', savedAt: new Date().toISOString(), players: data.players, matches: data.matches, settings: data.settings });
@@ -910,6 +911,13 @@
   });
 
   document.addEventListener('change', function (e) {
+    var bid = e.target.dataset && e.target.dataset.boost;
+    if (bid) {
+      var bl = (settings().boost || []).filter(function (x) { return x !== bid; });
+      if (e.target.checked) bl.push(bid);
+      store.saveSettings(Object.assign({}, settings(), { boost: bl })).then(function () { toast(bid + (e.target.checked ? ' 추천에 자주 보이기' : ' 추천 보통으로')); }, fail);
+      return;
+    }
     var id = e.target.dataset && e.target.dataset.away;
     if (id) store.updatePlayer(id, { away: e.target.checked }).then(function () { toast(id + (e.target.checked ? ' 쉬는 중' : ' 복귀')); }, fail);
   });

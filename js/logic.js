@@ -118,6 +118,7 @@
   /* 상대 추천: 비슷한 실력 / 도전 / 처음 붙는 친구 */
   function recommend(player, students, matches, settings) {
     var others = students.filter(function (s) { return s.id !== player.id && !s.away; });
+    var boost = (settings && settings.boost) || [];
     var scored = others.map(function (o) {
       var diff = o.points - player.points;
       var ago = lastMetAgo(matches, player.id, o.id);
@@ -127,7 +128,10 @@
       if (ago < 3) score += 300;
       else if (ago < 10) score += 80;
       score += met * 15;
-      return { student: o, diff: diff, met: met, ago: ago, score: score, preview: preview(player, o, settings) };
+      // 선생님이 '추천에 자주'로 고른 친구는 더 앞에 (최근에 붙은 상대여도)
+      var boosted = boost.indexOf(o.id) !== -1;
+      if (boosted) score = Math.max(0, score - 200);
+      return { boosted: boosted, student: o, diff: diff, met: met, ago: ago, score: score, preview: preview(player, o, settings) };
     });
 
     var close = scored.slice().sort(function (x, y) { return x.score - y.score; }).slice(0, 3);
@@ -150,6 +154,10 @@
       .sort(function (x, y) { return Math.abs(x.diff) - Math.abs(y.diff); })
       .slice(0, 2);
 
+    // 그래도 안 보이면 호적수 마지막 자리에 넣는다
+    var shown = close.concat(challenge, fresh).some(function (c) { return c.boosted; });
+    var extra = scored.filter(function (c) { return c.boosted; }).sort(function (x, y) { return x.score - y.score; })[0];
+    if (!shown && extra) { if (close.length >= 3) close.pop(); close.push(extra); }
     return { close: close, challenge: challenge, fresh: fresh };
   }
 

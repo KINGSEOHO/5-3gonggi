@@ -57,3 +57,15 @@ test('대진표: 모두 한 번씩 짝지어진다', () => {
   const ids = new Set(pairs.flat().map(p => p.id).concat(rest.id));
   assert.strictEqual(ids.size, 7);
 });
+
+test('추천에 자주: 고른 친구가 점수가 멀어도 추천에 나온다', () => {
+  const me = { id: 'a', points: 300 };
+  const s = [me, { id: 'b', points: 300 }, { id: 'c', points: 310 }, { id: 'd', points: 320 }, { id: 'e', points: 330 }, { id: 'x', points: 900 }];
+  const plain = GG.recommend(me, s, []);
+  const all = (r) => r.close.concat(r.challenge, r.fresh).map(c => c.student.id);
+  assert.ok(!plain.close.some(c => c.student.id === 'x'));
+  const boosted = GG.recommend(me, s, [{ a: 'a', b: 'x' }], { boost: ['x'] });
+  assert.ok(all(boosted).includes('x'));
+  // 자기 자신은 추천하지 않음
+  assert.ok(!all(GG.recommend(s[5], s, [], { boost: ['x'] })).includes('x'));
+});
