@@ -14,7 +14,9 @@ const i = process.argv.indexOf('--fragment');
 if (i !== -1) {
   // 문서 뼈대 없이 내용만 (호스팅 쪽에서 뼈대를 씌우는 경우)
   const head = html.match(/<head>([\s\S]*?)<\/head>/)[1].replace(/<meta charset[^>]*>\s*|<meta name="viewport"[^>]*>\s*/g, '');
-  const body = html.match(/<body>([\s\S]*?)<\/body>/)[1];
+  // 그런 곳에서는 파일 내려받기가 막혀 있으니 '파일로 저장' 버튼을 숨긴다 (백업 코드 복사는 그대로)
+  const body = html.match(/<body>([\s\S]*?)<\/body>/)[1]
+    .replace('<script>', '<script>window.GG_NO_FILE_SAVE = true;</script>\n<script>');
   fs.writeFileSync(process.argv[i + 1], head.trim() + '\n' + body.trim() + '\n');
 } else {
   fs.mkdirSync(path.join(root, 'dist'), { recursive: true });

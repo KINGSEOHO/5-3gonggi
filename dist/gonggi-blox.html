@@ -1220,7 +1220,7 @@ textarea.input { min-height: 120px; resize: vertical; }
 
       '<section class="card section"><h2>백업과 옮기기</h2>' +
       '<p class="muted" style="margin:0;font-size:14px">기록은 이 컴퓨터의 브라우저에 저장돼요. 다른 컴퓨터로 옮기거나 혹시 모를 때를 위해 가끔 백업해 두세요.</p>' +
-      '<div class="row-actions" style="justify-content:flex-start"><button class="btn" type="button" data-act="export-file">⬇ 파일로 저장</button>' +
+      '<div class="row-actions" style="justify-content:flex-start">' + (window.GG_NO_FILE_SAVE ? '' : '<button class="btn" type="button" data-act="export-file">⬇ 파일로 저장</button>') +
       '<button class="btn" type="button" data-act="copy-backup">백업 코드 복사</button>' +
       '<label class="btn" for="import-file" style="cursor:pointer">⬆ 파일 불러오기</label><input id="import-file" type="file" accept=".json,application/json" hidden></div>' +
       '<div class="form-row"><label for="import-text">백업 코드 붙여넣기</label><textarea class="input" id="import-text" style="min-height:70px" placeholder="복사한 백업 코드를 여기에 붙여넣고 불러오기를 눌러요"></textarea></div>' +
