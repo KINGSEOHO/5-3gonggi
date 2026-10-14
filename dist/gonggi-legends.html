@@ -1,0 +1,1762 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>공기 레전드</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="theme-color" content="#06080e">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Nanum+Myeongjo:wght@800&family=Noto+Sans+KR:wght@400;700;900&family=Rajdhani:wght@600;700&display=swap">
+<style>
+/* 공기 블록스 — 게임 클라이언트 톤: 깊은 밤색 배경, 금빛 테두리, 헥스텍 청록 포인트
+   레이아웃: 위쪽 게임 메뉴 바(휴대폰은 아래 탭) + 넓은 무대 + 각진 패널 */
+:root {
+  --void: #06080e;
+  --deep: #0b101b;
+  --panel: #101828;
+  --panel-2: #172036;
+  --line: #263149;
+  --gold: #c8aa6e;
+  --gold-hi: #f0e6d2;
+  --gold-lo: #785a28;
+  --hex: #0ac8b9;
+  --hex-lo: #005a82;
+  --fg: #e9e4d8;
+  --muted: #8d95a6;
+  --win: #39d39a;
+  --lose: #e84057;
+  --blue: #3d8bff;
+  --red: #e84057;
+  --font-epic: "Cinzel", "Nanum Myeongjo", serif;
+  --font-title: "Nanum Myeongjo", "Cinzel", serif;
+  --font-ui: "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+  --font-num: "Rajdhani", "Noto Sans KR", sans-serif;
+  --cut: 12px;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { min-height: 100%; }
+body {
+  margin: 0; color: var(--fg); font-family: var(--font-ui); font-size: 15px; line-height: 1.55;
+  background-color: var(--void);
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(200, 170, 110, .16), transparent 70%),
+    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(10, 200, 185, .08), transparent 70%),
+    radial-gradient(ellipse 60% 40% at 0% 80%, rgba(61, 139, 255, .07), transparent 70%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='98' viewBox='0 0 56 98'%3E%3Cpath d='M28 66L0 50V17L28 1l28 16v33zM28 98V66' fill='none' stroke='%23c8aa6e' stroke-opacity='.05'/%3E%3C/svg%3E");
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3 { margin: 0; font-weight: 800; text-wrap: balance; }
+h1 { font-family: var(--font-title); font-size: 34px; line-height: 1.15; letter-spacing: -.01em; }
+h2 { font-family: var(--font-title); font-size: 22px; line-height: 1.2; }
+h3 { font-size: 16px; font-weight: 700; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--hex); outline-offset: 2px; }
+.num { font-family: var(--font-num); font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.muted { color: var(--muted); }
+.eyebrow { font-family: var(--font-epic); font-size: 12px; letter-spacing: .32em; color: var(--gold); text-transform: uppercase; }
+.gold-text {
+  background: linear-gradient(180deg, var(--gold-hi) 10%, var(--gold) 55%, var(--gold-lo) 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+
+/* ── 위쪽 메뉴 바 ── */
+.topbar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20;
+  background: linear-gradient(180deg, rgba(6, 8, 14, .97), rgba(11, 16, 27, .93));
+  border-bottom: 1px solid var(--gold-lo);
+  box-shadow: 0 1px 0 rgba(200, 170, 110, .15), 0 10px 30px rgba(0, 0, 0, .5);
+}
+.topbar-in {
+  display: flex; align-items: center; gap: 24px; height: 64px; max-width: 1240px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.logo { display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--fg); flex-shrink: 0; }
+.logo-mark { width: 38px; height: 38px; }
+.logo-text { display: flex; flex-direction: column; line-height: 1; }
+.logo-text b { font-family: var(--font-epic); font-weight: 900; font-size: 19px; letter-spacing: .14em; }
+.logo-text small { font-size: 11px; color: var(--gold); letter-spacing: .2em; margin-top: 4px; }
+.mainnav { display: flex; align-items: stretch; height: 100%; gap: 4px; }
+.navlink {
+  position: relative; display: flex; align-items: center; gap: 8px; padding: 0 14px;
+  color: var(--muted); text-decoration: none; font-weight: 700; font-size: 15px; letter-spacing: .04em;
+  transition: color .15s;
+}
+.navlink svg { opacity: .8; }
+.navlink:hover { color: var(--gold-hi); }
+.navlink.active { color: var(--gold-hi); }
+.navlink.active::after {
+  content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 3px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  box-shadow: 0 0 12px var(--gold);
+}
+.top-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.mode-chip {
+  font-size: 12px; font-weight: 700; padding: 4px 10px; border: 1px solid var(--line); color: var(--muted);
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+}
+.mode-chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.mode-chip.live i { background: var(--win); box-shadow: 0 0 8px var(--win); }
+.mode-chip.demo { border-color: var(--gold-lo); color: var(--gold); }
+.mode-chip.demo i { background: var(--gold); }
+.icon-btn {
+  width: 38px; height: 38px; display: grid; place-items: center; color: var(--gold);
+  background: var(--deep); border: 1px solid var(--gold-lo);
+}
+.icon-btn:hover { color: var(--gold-hi); border-color: var(--gold); }
+
+/* ── 무대 ── */
+main {
+  max-width: 1240px; margin: 0 auto; padding-block: 28px 80px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.page { display: flex; flex-direction: column; gap: 26px; animation: rise .35s ease-out; }
+.page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.page-head p { margin: 6px 0 0; color: var(--muted); max-width: 60ch; }
+.section { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.section-head a, .link { color: var(--gold); font-weight: 700; text-decoration: none; font-size: 14px; letter-spacing: .04em; }
+.section-head a:hover, .link:hover { color: var(--gold-hi); }
+.title-rule { display: flex; align-items: center; gap: 14px; }
+.title-rule::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--gold-lo), transparent); }
+
+/* 각진 패널 */
+.panel {
+  position: relative; background: linear-gradient(180deg, rgba(23, 32, 54, .92), rgba(13, 19, 32, .94));
+  border: 1px solid var(--line); padding: 20px;
+  clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
+}
+.panel.gilded { border-color: var(--gold-lo); box-shadow: inset 0 1px 0 rgba(240, 230, 210, .08), inset 0 0 40px rgba(200, 170, 110, .05); }
+.panel.tight { padding: 8px 10px; }
+
+/* ── 버튼 ── */
+.btn {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 42px; padding: 0 18px; border: 1px solid var(--gold-lo); background: var(--deep); color: var(--gold-hi);
+  font-weight: 700; font-size: 14px; letter-spacing: .06em; text-decoration: none; white-space: nowrap;
+  transition: border-color .15s, box-shadow .15s, filter .15s, transform .08s;
+}
+.btn:hover { border-color: var(--gold); box-shadow: 0 0 14px rgba(200, 170, 110, .25); }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: .4; cursor: not-allowed; box-shadow: none; }
+.btn-play {
+  min-height: 52px; padding: 0 34px; font-family: var(--font-epic); font-weight: 900; font-size: 17px; letter-spacing: .22em;
+  color: #e9fffd; border: 2px solid transparent;
+  background:
+    linear-gradient(180deg, #1c6f7d, #0b3d48) padding-box,
+    linear-gradient(180deg, var(--gold-hi), var(--gold), var(--gold-lo)) border-box;
+  box-shadow: 0 0 22px rgba(10, 200, 185, .25), inset 0 0 18px rgba(10, 200, 185, .35);
+  clip-path: polygon(14px 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 14px 100%, 0 50%);
+}
+.btn-play:hover { filter: brightness(1.15); box-shadow: 0 0 30px rgba(10, 200, 185, .45), inset 0 0 22px rgba(10, 200, 185, .5); }
+.btn-play .ko { font-family: var(--font-ui); letter-spacing: .1em; font-size: 16px; }
+.btn-gold { background: linear-gradient(180deg, #d9bf86, #a5803f); color: #1a1408; border-color: var(--gold-hi); }
+.btn-gold:hover { filter: brightness(1.08); }
+.btn-ghost { background: transparent; }
+.btn-danger { border-color: #7a2030; color: #ffb3bf; }
+.btn-danger:hover { border-color: var(--lose); box-shadow: 0 0 14px rgba(232, 64, 87, .3); }
+.btn-sm { min-height: 32px; font-size: 13px; padding: 0 12px; }
+.btn-side {
+  min-height: 64px; font-family: var(--font-title); font-weight: 800; font-size: 19px; letter-spacing: .02em; width: 100%; white-space: normal; line-height: 1.2;
+}
+.btn-side.blue { border-color: var(--blue); background: linear-gradient(180deg, rgba(61, 139, 255, .28), rgba(61, 139, 255, .08)); }
+.btn-side.red { border-color: var(--red); background: linear-gradient(180deg, rgba(232, 64, 87, .28), rgba(232, 64, 87, .08)); }
+.btn-side.blue:hover { box-shadow: 0 0 22px rgba(61, 139, 255, .45); }
+.btn-side.red:hover { box-shadow: 0 0 22px rgba(232, 64, 87, .45); }
+
+/* ── 로비 히어로 ── */
+.hero {
+  position: relative; overflow: hidden; min-height: 300px; padding: 34px;
+  display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 24px; align-items: center;
+  border: 1px solid var(--gold-lo);
+  background:
+    radial-gradient(circle at 78% 55%, rgba(200, 170, 110, .25), transparent 45%),
+    radial-gradient(circle at 78% 55%, rgba(10, 200, 185, .12), transparent 65%),
+    linear-gradient(120deg, #0a0f1b 30%, #121b2e);
+  clip-path: polygon(20px 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%, 0 20px);
+}
+.hero::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-conic-gradient(from 0deg at 78% 55%, rgba(200, 170, 110, .06) 0deg 6deg, transparent 6deg 18deg);
+  mask-image: radial-gradient(circle at 78% 55%, #000 0, transparent 55%);
+  -webkit-mask-image: radial-gradient(circle at 78% 55%, #000 0, transparent 55%);
+}
+.hero-copy { position: relative; display: flex; flex-direction: column; gap: 12px; }
+.hero h1 { font-size: 46px; line-height: 1.08; }
+.hero h1 .en { display: block; font-family: var(--font-epic); font-weight: 900; font-size: 18px; letter-spacing: .3em; margin-bottom: 8px; }
+.hero p { margin: 0; color: #c3c8d2; max-width: 44ch; }
+.hero-actions { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+.hero-stage { position: relative; display: flex; justify-content: center; align-items: flex-end; gap: 6px; }
+.champ { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 2px; background: none; border: 0; padding: 0; color: inherit; }
+.champ .avatar-full { filter: drop-shadow(0 10px 18px rgba(0, 0, 0, .7)); }
+.champ-1 .avatar-full { width: 120px; }
+.champ-2 .avatar-full, .champ-3 .avatar-full { width: 78px; }
+.champ-name { font-weight: 800; font-size: 15px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.champ-1 .champ-name { font-family: var(--font-title); font-size: 20px; }
+.champ-place { font-family: var(--font-epic); font-weight: 900; font-size: 12px; letter-spacing: .2em; color: var(--gold); }
+.champ-1 { order: 2; margin-bottom: 20px; }
+.champ-2 { order: 1; }
+.champ-3 { order: 3; }
+.champ .crest { margin-bottom: -18px; position: relative; z-index: 1; }
+
+.demo-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  border: 1px dashed var(--gold-lo); background: rgba(200, 170, 110, .06); padding: 12px 16px;
+}
+.demo-banner b { color: var(--gold-hi); }
+
+/* 시즌 요약 숫자 */
+.stat-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.stat-strip > div { background: var(--deep); padding: 14px 16px; }
+.stat-strip b { display: block; font-family: var(--font-num); font-size: 30px; line-height: 1; color: var(--gold-hi); }
+.stat-strip span { font-size: 12px; color: var(--muted); letter-spacing: .08em; }
+
+.grid-2 { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+
+/* ── 리더보드 ── */
+.board { display: flex; flex-direction: column; }
+.board-row {
+  display: grid; grid-template-columns: 44px minmax(0, 1fr) auto auto; gap: 12px; align-items: center;
+  padding: 9px 10px; border-bottom: 1px solid rgba(38, 49, 73, .7); background: none; border-left: 0; border-right: 0; border-top: 0;
+  width: 100%; text-align: left; color: inherit; transition: background .15s;
+}
+.board-row:hover { background: rgba(200, 170, 110, .06); }
+.board-row:last-child { border-bottom: 0; }
+.board-pos { font-family: var(--font-num); font-size: 22px; font-weight: 700; text-align: center; color: var(--muted); }
+.board-row.top .board-pos { color: var(--gold-hi); text-shadow: 0 0 10px rgba(200, 170, 110, .6); }
+.who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.who b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.who .sub { display: block; font-size: 12px; color: var(--muted); font-weight: 400; }
+.tier-tag { display: flex; align-items: center; gap: 6px; white-space: nowrap; font-weight: 700; font-size: 14px; }
+.lp { font-family: var(--font-num); font-weight: 700; font-size: 17px; color: var(--gold-hi); white-space: nowrap; }
+.lp small { font-size: 12px; color: var(--gold); margin-left: 2px; letter-spacing: .08em; }
+.away-tag { font-size: 11px; color: var(--muted); border: 1px solid var(--line); padding: 0 5px; margin-left: 6px; font-weight: 400; }
+
+.filter-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip {
+  border: 1px solid var(--line); background: var(--deep); padding: 5px 12px; font-size: 13px; font-weight: 700; color: var(--muted);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.chip:hover { color: var(--fg); }
+.chip.on { color: var(--gold-hi); border-color: var(--gold); box-shadow: inset 0 0 12px rgba(200, 170, 110, .15); }
+.chip i { width: 9px; height: 9px; transform: rotate(45deg); }
+
+/* 피드 */
+.feed { display: flex; flex-direction: column; }
+.feed-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(38, 49, 73, .7); }
+.feed-row:last-child { border-bottom: 0; }
+.feed-text { min-width: 0; }
+.feed-time { font-size: 12px; color: var(--muted); }
+.up { color: var(--win); font-family: var(--font-num); font-weight: 700; font-size: 16px; }
+.down { color: var(--lose); font-family: var(--font-num); font-weight: 700; font-size: 16px; }
+.pill { display: inline-flex; align-items: center; gap: 4px; padding: 0 7px; font-size: 11px; font-weight: 700; letter-spacing: .04em; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; vertical-align: 1px; }
+.pill-up { border-color: rgba(57, 211, 154, .5); color: var(--win); }
+.pill-down { border-color: rgba(232, 64, 87, .5); color: #ff8a9b; }
+.pill-gold { border-color: var(--gold); color: var(--gold-hi); background: rgba(200, 170, 110, .1); }
+.pill-hex { border-color: rgba(10, 200, 185, .5); color: var(--hex); }
+
+.dist { display: flex; height: 10px; gap: 2px; }
+.dist span { display: block; min-width: 4px; }
+.dist-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--muted); }
+.dist-legend i { display: inline-block; width: 8px; height: 8px; transform: rotate(45deg); margin-right: 7px; }
+
+/* ── 선수 카드 (챔피언 선택) ── */
+.roster { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; }
+.card {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 0 0 10px; min-width: 0;
+  background: var(--deep); border: 1px solid var(--line); color: inherit; text-align: center; overflow: hidden;
+  transition: border-color .15s, transform .15s, box-shadow .15s;
+}
+.card:hover:not(:disabled) { border-color: var(--gold); transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0, 0, 0, .5), 0 0 16px rgba(200, 170, 110, .2); }
+.card:disabled { opacity: .35; cursor: not-allowed; }
+.card.picked { border-color: var(--hex); box-shadow: 0 0 18px rgba(10, 200, 185, .35); }
+.card-stage { width: 100%; aspect-ratio: 1 / 1.05; max-width: 100%; display: grid; place-items: end center; position: relative; }
+.card-stage .avatar-full { width: 58%; filter: drop-shadow(0 8px 10px rgba(0, 0, 0, .6)); }
+.card-stage .crest { position: absolute; top: 4px; right: 2px; }
+.card-pos { position: absolute; top: 6px; left: 8px; font-family: var(--font-num); font-weight: 700; color: var(--gold-hi); font-size: 15px; }
+.card-name { font-weight: 800; font-size: 15px; max-width: 100%; padding: 0 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-tier { font-size: 12px; color: var(--muted); }
+
+/* ── 대결 (매치 준비) ── */
+.arena {
+  position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 120px minmax(0, 1fr); align-items: stretch; gap: 0;
+}
+.side {
+  position: relative; min-height: 380px; padding: 18px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; overflow: hidden;
+  border: 1px solid var(--line); background: var(--deep);
+}
+.side.blue { border-color: rgba(61, 139, 255, .55); background: linear-gradient(180deg, rgba(61, 139, 255, .16), rgba(11, 16, 27, .95) 60%); }
+.side.red { border-color: rgba(232, 64, 87, .55); background: linear-gradient(180deg, rgba(232, 64, 87, .16), rgba(11, 16, 27, .95) 60%); }
+.side-label { font-family: var(--font-epic); font-weight: 900; font-size: 13px; letter-spacing: .35em; }
+.side.blue .side-label { color: #8db9ff; }
+.side.red .side-label { color: #ff8d9d; }
+.side .avatar-full { width: 120px; filter: drop-shadow(0 12px 18px rgba(0, 0, 0, .7)); }
+.side-glow { position: absolute; left: 50%; top: 46%; width: 260px; height: 260px; transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none; opacity: .55; }
+.side > :not(.side-glow) { position: relative; }
+.side-name { font-family: var(--font-title); font-weight: 800; font-size: 30px; line-height: 1.1; }
+.side-empty {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: var(--muted); width: 100%;
+}
+.empty-slot { width: 96px; height: 120px; border: 1px dashed var(--line); display: grid; place-items: center; font-size: 34px; color: var(--line); }
+.stakes { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+.stake { padding: 3px 10px; font-size: 13px; font-weight: 700; border: 1px solid var(--line); background: rgba(6, 8, 14, .6); white-space: nowrap; }
+.vs { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; position: relative; }
+.vs::before { content: ""; position: absolute; top: 10%; bottom: 10%; left: 50%; width: 1px; background: linear-gradient(180deg, transparent, var(--gold), transparent); }
+.vs-text {
+  position: relative; font-family: var(--font-epic); font-weight: 900; font-size: 54px; line-height: 1; padding: 8px 0;
+  background: linear-gradient(180deg, var(--gold-hi), var(--gold) 50%, var(--gold-lo)); -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 0 16px rgba(200, 170, 110, .55));
+  background-color: transparent;
+}
+.vs .btn { position: relative; background: var(--void); }
+.odds { display: flex; flex-direction: column; gap: 6px; }
+.odds-bar { display: flex; height: 8px; gap: 2px; }
+.odds-bar span:first-child { background: linear-gradient(90deg, #1f5ed6, var(--blue)); box-shadow: 0 0 10px rgba(61, 139, 255, .6); }
+.odds-bar span:last-child { background: linear-gradient(90deg, var(--red), #b0263a); box-shadow: 0 0 10px rgba(232, 64, 87, .6); }
+.odds-label { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
+.decide { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+.rec-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.rec-group h3 { font-family: var(--font-title); font-size: 18px; font-weight: 800; color: var(--gold-hi); }
+.rec-group p { margin: 2px 0 10px; font-size: 13px; color: var(--muted); }
+.rec-item {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%;
+  padding: 8px 10px; margin-bottom: 8px; background: rgba(6, 8, 14, .55); border: 1px solid var(--line); text-align: left; color: inherit;
+}
+.rec-item:hover { border-color: var(--gold); box-shadow: 0 0 12px rgba(200, 170, 110, .2); }
+.rec-gain { text-align: right; line-height: 1.2; }
+.rec-empty { font-size: 13px; color: var(--muted); }
+
+.pairs { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 10px; }
+.pair { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; align-items: center; padding: 10px; border: 1px solid var(--line); background: rgba(6, 8, 14, .5); }
+.pair .p { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pair .p:last-of-type { flex-direction: row-reverse; text-align: right; }
+.pair .p span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.pair .pv { font-family: var(--font-epic); font-weight: 900; color: var(--gold); font-size: 13px; }
+.pair.done { opacity: .4; }
+.pair-foot { grid-column: 1 / -1; display: flex; justify-content: center; }
+
+/* ── 창 ── */
+.overlay {
+  position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center; overflow-y: auto; overflow-x: hidden;
+  background: radial-gradient(circle at 50% 40%, rgba(16, 24, 40, .82), rgba(3, 4, 8, .94));
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  animation: fade .2s ease-out;
+}
+.overlay > * { margin: auto 0; flex-shrink: 0; }
+.modal {
+  width: min(680px, 100%); padding: 24px; display: flex; flex-direction: column; gap: 16px;
+  background: linear-gradient(180deg, #121a2c, #0a0f1a); border: 1px solid var(--gold-lo);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .7), inset 0 1px 0 rgba(240, 230, 210, .08);
+}
+.modal-sm { width: min(400px, 100%); }
+.modal-wide { width: min(960px, 100%); }
+.modal-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.pin-wrap { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
+.pin-input {
+  width: 200px; text-align: center; font-family: var(--font-num); font-size: 34px; letter-spacing: .5em; padding: 8px 0 8px .5em;
+  background: var(--void); border: 1px solid var(--gold-lo); color: var(--gold-hi);
+}
+.pin-input:focus { border-color: var(--gold); outline: none; box-shadow: 0 0 16px rgba(200, 170, 110, .3); }
+.form-error { color: #ff8a9b; font-size: 14px; min-height: 20px; }
+.shake { animation: shake .35s; }
+
+.profile-top { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 22px; align-items: center; }
+.profile-stage { position: relative; height: 200px; display: grid; place-items: end center; overflow: hidden; border: 1px solid var(--line); }
+.profile-stage .avatar-full { width: 104px; position: relative; filter: drop-shadow(0 10px 14px rgba(0, 0, 0, .7)); }
+.profile-rank { display: flex; align-items: center; gap: 14px; }
+.rank-name { font-family: var(--font-title); font-weight: 800; font-size: 24px; line-height: 1.1; }
+.rank-en { font-family: var(--font-epic); font-weight: 700; font-size: 11px; letter-spacing: .3em; color: var(--muted); }
+.lpbar { height: 10px; background: var(--void); border: 1px solid var(--line); position: relative; overflow: hidden; }
+.lpbar span { position: absolute; left: 0; top: 0; bottom: 0; transition: width 1.2s cubic-bezier(.2, .8, .2, 1); }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.stat { background: var(--deep); padding: 10px; text-align: center; }
+.stat b { display: block; font-family: var(--font-num); font-size: 26px; line-height: 1.1; color: var(--gold-hi); }
+.stat span { font-size: 12px; color: var(--muted); }
+.form-row { display: flex; flex-direction: column; gap: 6px; }
+.form-row label, .label { font-weight: 700; font-size: 14px; }
+.input { border: 1px solid var(--line); background: var(--void); padding: 9px 12px; width: 100%; }
+.input:focus { border-color: var(--gold); outline: none; }
+.swatches, .faces { display: flex; flex-wrap: wrap; gap: 6px; }
+.swatch { width: 30px; height: 30px; border: 2px solid var(--void); outline: 1px solid var(--line); }
+.swatch.on { outline: 2px solid var(--gold-hi); }
+.face-btn { width: 46px; height: 46px; padding: 3px; border: 1px solid var(--line); background: var(--void); }
+.face-btn.on { border-color: var(--gold); box-shadow: 0 0 10px rgba(200, 170, 110, .35); }
+.row-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
+details summary { cursor: pointer; font-weight: 700; color: var(--gold); }
+.check { display: flex; gap: 8px; align-items: center; font-weight: 700; }
+
+/* ── 승리 화면 ── */
+.result {
+  position: relative; width: min(560px, 100%); text-align: center; display: flex; flex-direction: column; align-items: center; gap: 14px;
+}
+.result-rays {
+  position: absolute; left: 50%; top: 120px; width: 620px; height: 620px; transform: translate(-50%, -50%); pointer-events: none; max-width: none;
+  background: repeating-conic-gradient(rgba(200, 170, 110, .16) 0deg 5deg, transparent 5deg 15deg);
+  -webkit-mask-image: radial-gradient(circle, #000 0, transparent 60%); mask-image: radial-gradient(circle, #000 0, transparent 60%);
+  animation: spin 40s linear infinite;
+}
+.result.defeat .result-rays { display: none; }
+.result > :not(.result-rays) { position: relative; }
+.result-word {
+  font-family: var(--font-epic); font-weight: 900; font-size: 74px; line-height: 1; letter-spacing: .12em; padding-left: .12em;
+  background: linear-gradient(180deg, #fff8e6 5%, var(--gold) 50%, var(--gold-lo) 95%); -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 0 24px rgba(200, 170, 110, .55)); animation: slam .55s cubic-bezier(.2, 1.4, .4, 1) both;
+}
+.result-sub { font-family: var(--font-title); font-weight: 800; font-size: 22px; color: var(--gold-hi); animation: rise .5s .25s both; }
+.result .avatar-full { width: 120px; filter: drop-shadow(0 14px 18px rgba(0, 0, 0, .8)); animation: rise .5s .1s both; }
+.result-card { width: 100%; padding: 16px; display: flex; flex-direction: column; gap: 12px; animation: rise .5s .35s both; text-align: left; }
+.result-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center; }
+.result-line .lpbar { grid-column: 1 / -1; }
+.result-delta { font-family: var(--font-num); font-weight: 700; font-size: 30px; line-height: 1; }
+.promo { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 0 2px; animation: rise .6s .7s both; }
+.promo .crest { animation: crest-in 1s .8s cubic-bezier(.2, 1.3, .4, 1) both; }
+.promo-text { font-family: var(--font-title); font-weight: 800; font-size: 22px; }
+.promo-text.down { color: var(--muted); font-size: 16px; }
+.confetti { position: fixed; inset: 0; pointer-events: none; z-index: 60; overflow: hidden; }
+.confetti i { position: absolute; top: -20px; width: 6px; height: 14px; animation: fall linear forwards; }
+
+/* 토스트 */
+.toast {
+  position: fixed; left: 50%; transform: translateX(-50%); z-index: 70; bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  background: #0d1424; border: 1px solid var(--gold-lo); color: var(--gold-hi); padding: 11px 16px; font-weight: 700;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .6); max-width: calc(100% - 32px); animation: rise .25s;
+}
+.toast.error { border-color: var(--lose); color: #ffb3bf; }
+
+/* 티어 안내 */
+.ladder { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.ladder-item { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; padding: 16px 8px; }
+.ladder-item .rank-name { font-size: 18px; }
+.ladder-item .range { font-family: var(--font-num); font-weight: 700; color: var(--fg); }
+.ladder-item .count { font-size: 12px; color: var(--muted); }
+.rules { display: flex; flex-direction: column; gap: 10px; }
+.rules p { margin: 0; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 12px; letter-spacing: .08em; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; font-weight: 700; }
+td { padding: 9px 10px; border-bottom: 1px solid rgba(38, 49, 73, .7); white-space: nowrap; }
+.example-table td:not(:first-child), .example-table th:not(:first-child) { text-align: center; }
+
+.empty { text-align: center; padding: 36px 16px; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.loading { display: grid; place-items: center; min-height: 50vh; gap: 16px; text-align: center; color: var(--muted); }
+.loading .logo-mark { width: 64px; height: 64px; animation: pulse 1.6s ease-in-out infinite; }
+
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes slam { from { opacity: 0; transform: scale(1.8); letter-spacing: .5em; } to { opacity: 1; transform: none; } }
+@keyframes crest-in { from { opacity: 0; transform: scale(.2) rotate(-25deg); } to { opacity: 1; transform: none; } }
+@keyframes spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+@keyframes fall { to { transform: translateY(110vh) rotate(720deg); } }
+@keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-8px); } 50% { transform: translateX(8px); } 75% { transform: translateX(-4px); } }
+@keyframes pulse { 50% { opacity: .5; transform: scale(.94); } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .confetti { display: none; }
+}
+
+/* ── 좁은 화면 ── */
+@media (max-width: 1000px) {
+  .rec-groups { grid-template-columns: minmax(0, 1fr); }
+  .grid-2 { grid-template-columns: minmax(0, 1fr); }
+  .ladder { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+}
+@media (max-width: 820px) {
+  .mainnav {
+    position: fixed; left: 0; right: 0; bottom: 0; height: auto; z-index: 30; justify-content: space-around; gap: 0;
+    background: rgba(6, 8, 14, .97); border-top: 1px solid var(--gold-lo);
+    padding: 4px max(4px, env(safe-area-inset-right, 0px)) calc(4px + env(safe-area-inset-bottom, 0px)) max(4px, env(safe-area-inset-left, 0px));
+  }
+  .navlink { flex-direction: column; gap: 2px; font-size: 11px; padding: 6px 4px; flex: 1; text-align: center; letter-spacing: 0; }
+  .navlink.active::after { top: -5px; bottom: auto; }
+  main { padding-bottom: 96px; }
+  .toast { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+  .hero { grid-template-columns: minmax(0, 1fr); padding: 24px 20px; }
+  .hero h1 { font-size: 34px; }
+  .hero::before { display: none; }
+  .stat-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .arena { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+  .vs { grid-column: 1 / -1; order: -1; flex-direction: row; }
+  .vs::before { display: none; }
+  .vs-text { font-size: 38px; }
+  .side { min-height: 300px; padding: 12px 8px; }
+  .side .avatar-full { width: 84px; }
+  .side-name { font-size: 22px; }
+  .profile-top { grid-template-columns: minmax(0, 1fr); }
+  .profile-stage { height: 170px; }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .result-word { font-size: 52px; }
+  .decide { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 480px) {
+  .logo-text small, .mode-chip span { display: none; }
+  .board-row { grid-template-columns: 28px minmax(0, 1fr) auto auto; gap: 8px; padding-inline: 6px; }
+  .board-row .tier-tag span { display: none; }
+  .roster { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+  h1 { font-size: 28px; }
+}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-in">
+    <a class="logo" href="#home" aria-label="공기 레전드 로비">
+      <span id="logo-slot"></span>
+      <span class="logo-text"><b class="gold-text">GONGGI</b><small>LEGENDS</small></span>
+    </a>
+    <nav class="mainnav" id="nav" aria-label="메뉴"></nav>
+    <div class="top-right">
+      <span class="mode-chip" id="mode-chip"></span>
+      <button class="icon-btn" id="sound-btn" type="button" aria-label="효과음 켜기/끄기"></button>
+    </div>
+  </div>
+</header>
+<main id="main"></main>
+<div id="layer"></div>
+<!--FIREBASE-->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<!--/FIREBASE-->
+<script>
+/* 공기 블록스 — 해바라기반 체크리스트(5-3check)와 연동 설정
+ *
+ * 체크리스트 app.js 맨 위에 있는 두 가지를 그대로 복사해 넣으면
+ * 같은 학생 명단과 같은 4자리 비밀번호로 공기 리그를 쓸 수 있어요.
+ *   1) firebase.initializeApp({ ... }) 괄호 안의 내용  → FIREBASE 에
+ *   2) var STUDENTS = [ ... ]                         → STUDENTS 에
+ * 선생님 비밀번호도 체크리스트와 같게 맞춰 주세요.
+ *
+ * FIREBASE 가 비어 있으면 이 컴퓨터에만 저장되는 체험 모드로 열려요.
+ */
+window.GG_CONFIG = {
+  FIREBASE: null, // 예: { apiKey: "...", authDomain: "...", projectId: "...", ... }
+  STUDENTS: [],   // 예: [{ id: 1, name: "홍길동" }, { id: 2, name: "김철수" }]
+  TEACHER_PASSWORD: '',
+  LEAGUE_NAME: '해바라기 리그',
+  SEASON: 1
+};
+</script>
+<script>
+/* 공기 블록스 — 티어 / 점수 / 상대 추천 계산 (화면과 분리된 순수 함수) */
+(function (root) {
+  'use strict';
+
+  // 한 단계(디비전) = 50점, 한 티어 = 4단계(IV → I) = 200점.
+  // 마스터 이상은 단계 없이 점수만 쌓인다.
+  var DIV_SIZE = 50;
+  var TIERS = [
+    { id: 'iron',        name: '아이언',       en: 'IRON',        min: 0,    divs: 4, color: '#7d7a78', light: '#b8b2ae' },
+    { id: 'bronze',      name: '브론즈',       en: 'BRONZE',      min: 200,  divs: 4, color: '#a5653d', light: '#e2a273' },
+    { id: 'silver',      name: '실버',         en: 'SILVER',      min: 400,  divs: 4, color: '#8394a6', light: '#d6e0ea' },
+    { id: 'gold',        name: '골드',         en: 'GOLD',        min: 600,  divs: 4, color: '#d29b1f', light: '#ffe08a' },
+    { id: 'platinum',    name: '플래티넘',     en: 'PLATINUM',    min: 800,  divs: 4, color: '#2aa198', light: '#9ff0e2' },
+    { id: 'emerald',     name: '에메랄드',     en: 'EMERALD',     min: 1000, divs: 4, color: '#1f9d55', light: '#8ff0b0' },
+    { id: 'diamond',     name: '다이아몬드',   en: 'DIAMOND',     min: 1200, divs: 4, color: '#4b7bec', light: '#b9d0ff' },
+    { id: 'master',      name: '마스터',       en: 'MASTER',      min: 1400, divs: 0, color: '#9b51e0', light: '#e2c2ff' },
+    { id: 'grandmaster', name: '그랜드마스터', en: 'GRANDMASTER', min: 1700, divs: 0, color: '#e0393e', light: '#ffb3b5' },
+    { id: 'challenger',  name: '챌린저',       en: 'CHALLENGER',  min: 2000, divs: 0, color: '#f2b705', light: '#fff4b8' }
+  ];
+  var ROMAN = ['IV', 'III', 'II', 'I'];
+
+  var DEFAULT_SETTINGS = {
+    startPoints: 0,   // 처음 등록할 때 점수
+    winBase: 25,      // 실력이 같은 친구를 이겼을 때 얻는 점수
+    lossBase: 15,     // 실력이 같은 친구에게 졌을 때 잃는 점수
+    streakBonus: true // 3연승부터 보너스
+  };
+
+  function tierIndexOf(points) {
+    for (var i = TIERS.length - 1; i >= 0; i--) {
+      if (points >= TIERS[i].min) return i;
+    }
+    return 0;
+  }
+
+  /* 점수 → 티어 정보 (이름, 단계, 다음 단계까지 진행도) */
+  function getRank(points) {
+    points = Math.max(0, Math.round(points || 0));
+    var idx = tierIndexOf(points);
+    var t = TIERS[idx];
+    var next = TIERS[idx + 1];
+    var rank = { tier: t, tierIndex: idx, points: points, division: '', divIndex: 0, lp: 0, lpMax: 0, label: t.name, value: 0 };
+
+    if (t.divs > 0) {
+      var d = Math.min(t.divs - 1, Math.floor((points - t.min) / DIV_SIZE));
+      rank.divIndex = d;
+      rank.division = ROMAN[d];
+      rank.lp = points - t.min - d * DIV_SIZE;
+      rank.lpMax = DIV_SIZE;
+      rank.label = t.name + ' ' + rank.division;
+    } else {
+      rank.lp = points - t.min;
+      rank.lpMax = next ? next.min - t.min : 0;
+    }
+    // 티어+단계를 하나의 숫자로 (비교용): 아이언 IV = 0, 아이언 III = 1 …
+    rank.value = idx * 4 + rank.divIndex;
+    return rank;
+  }
+
+  /* 기대 승률 (엘로 공식). 점수 차 200점(한 티어)이면 약 76% */
+  function expectedScore(myPoints, oppPoints) {
+    return 1 / (1 + Math.pow(10, (oppPoints - myPoints) / 400));
+  }
+
+  /* 대결 결과 미리 계산. winner의 streak은 이기기 전 연승 수 */
+  function calcMatch(winnerPoints, loserPoints, winnerStreak, settings) {
+    var s = Object.assign({}, DEFAULT_SETTINGS, settings || {});
+    var eWin = expectedScore(winnerPoints, loserPoints); // 이긴 사람이 이길 거라고 예상된 정도
+    var eLose = 1 - eWin;                                  // 진 사람이 이길 거라고 예상된 정도
+
+    // 낮은 티어가 높은 티어를 이기면 크게, 높은 티어가 낮은 티어를 이기면 조금.
+    var gain = Math.round(s.winBase * 2 * (1 - eWin));
+    gain = Math.max(5, Math.min(s.winBase * 2, gain));
+
+    // 높은 티어가 지면 많이, 낮은 티어가 지면 조금 잃는다.
+    var loss = Math.round(s.lossBase * 2 * eLose);
+    loss = Math.max(3, Math.min(s.lossBase * 2, loss));
+    loss = Math.min(loss, loserPoints); // 0점 아래로는 내려가지 않음
+
+    var bonus = 0;
+    if (s.streakBonus) {
+      var newStreak = (winnerStreak || 0) + 1;
+      if (newStreak >= 3) bonus = Math.min(10, (newStreak - 2) * 2);
+    }
+    var upset = getRank(loserPoints).value - getRank(winnerPoints).value >= 4; // 한 티어 이상 위를 이김
+
+    return { gain: gain, bonus: bonus, total: gain + bonus, loss: loss, upset: upset, winChance: eWin };
+  }
+
+  /* 두 사람이 붙었을 때 각자 이기면/지면 얼마인지 */
+  function preview(a, b, settings) {
+    var aWins = calcMatch(a.points, b.points, a.streak > 0 ? a.streak : 0, settings);
+    var bWins = calcMatch(b.points, a.points, b.streak > 0 ? b.streak : 0, settings);
+    return {
+      a: { win: aWins.total, lose: bWins.loss, chance: aWins.winChance },
+      b: { win: bWins.total, lose: aWins.loss, chance: bWins.winChance }
+    };
+  }
+
+  /* 최근 대결 기록에서 두 사람이 마지막으로 붙은 뒤 지난 경기 수 */
+  function lastMetAgo(matches, idA, idB) {
+    for (var i = matches.length - 1, n = 0; i >= 0; i--, n++) {
+      var m = matches[i];
+      if ((m.a === idA && m.b === idB) || (m.a === idB && m.b === idA)) return n;
+    }
+    return Infinity;
+  }
+
+  function timesMet(matches, idA, idB) {
+    var c = 0;
+    for (var i = 0; i < matches.length; i++) {
+      var m = matches[i];
+      if ((m.a === idA && m.b === idB) || (m.a === idB && m.b === idA)) c++;
+    }
+    return c;
+  }
+
+  /* 상대 추천: 비슷한 실력 / 도전 / 처음 붙는 친구 */
+  function recommend(player, students, matches, settings) {
+    var others = students.filter(function (s) { return s.id !== player.id && !s.away; });
+    var scored = others.map(function (o) {
+      var diff = o.points - player.points;
+      var ago = lastMetAgo(matches, player.id, o.id);
+      var met = timesMet(matches, player.id, o.id);
+      // 점수가 가까울수록, 최근에 안 붙었을수록 좋은 상대
+      var score = Math.abs(diff);
+      if (ago < 3) score += 300;
+      else if (ago < 10) score += 80;
+      score += met * 15;
+      return { student: o, diff: diff, met: met, ago: ago, score: score, preview: preview(player, o, settings) };
+    });
+
+    var close = scored.slice().sort(function (x, y) { return x.score - y.score; }).slice(0, 3);
+    var used = {};
+    close.forEach(function (c) { used[c.student.id] = true; });
+
+    var challenge = scored
+      .filter(function (c) { return c.diff > 0 && !used[c.student.id]; })
+      .sort(function (x, y) {
+        // 너무 멀지 않은 위쪽 상대 우선 (50~300점 차이가 이상적)
+        var dx = Math.abs(x.diff - 150) + (x.ago < 3 ? 300 : 0);
+        var dy = Math.abs(y.diff - 150) + (y.ago < 3 ? 300 : 0);
+        return dx - dy;
+      })
+      .slice(0, 2);
+    challenge.forEach(function (c) { used[c.student.id] = true; });
+
+    var fresh = scored
+      .filter(function (c) { return c.met === 0 && !used[c.student.id]; })
+      .sort(function (x, y) { return Math.abs(x.diff) - Math.abs(y.diff); })
+      .slice(0, 2);
+
+    return { close: close, challenge: challenge, fresh: fresh };
+  }
+
+  /* 오늘의 대진표: 점수 순으로 정렬한 뒤 가까운 친구끼리 짝. 최근 상대는 피한다 */
+  function autoPair(students, matches) {
+    var pool = students.filter(function (s) { return !s.away; })
+      .slice().sort(function (a, b) { return b.points - a.points; });
+    var pairs = [];
+    while (pool.length > 1) {
+      var p = pool.shift();
+      var best = 0, bestCost = Infinity;
+      for (var i = 0; i < Math.min(pool.length, 4); i++) {
+        var cost = Math.abs(pool[i].points - p.points) + (lastMetAgo(matches, p.id, pool[i].id) < 5 ? 250 : 0);
+        if (cost < bestCost) { bestCost = cost; best = i; }
+      }
+      pairs.push([p, pool.splice(best, 1)[0]]);
+    }
+    return { pairs: pairs, rest: pool[0] || null };
+  }
+
+  /* 승패 결과를 학생 객체에 반영 (새 객체 반환) */
+  function applyResult(winner, loser, settings) {
+    var r = calcMatch(winner.points, loser.points, winner.streak > 0 ? winner.streak : 0, settings);
+    var w = Object.assign({}, winner);
+    var l = Object.assign({}, loser);
+    w.points += r.total;
+    w.wins = (w.wins || 0) + 1;
+    w.streak = (w.streak > 0 ? w.streak : 0) + 1;
+    w.bestStreak = Math.max(w.bestStreak || 0, w.streak);
+    w.peak = Math.max(w.peak || 0, w.points);
+    l.points = Math.max(0, l.points - r.loss);
+    l.losses = (l.losses || 0) + 1;
+    l.streak = (l.streak < 0 ? l.streak : 0) - 1;
+    return { winner: w, loser: l, result: r };
+  }
+
+  var api = {
+    TIERS: TIERS, DIV_SIZE: DIV_SIZE, ROMAN: ROMAN, DEFAULT_SETTINGS: DEFAULT_SETTINGS,
+    getRank: getRank, expectedScore: expectedScore, calcMatch: calcMatch, preview: preview,
+    recommend: recommend, autoPair: autoPair, applyResult: applyResult,
+    lastMetAgo: lastMetAgo, timesMet: timesMet
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.GG = api;
+})(this);
+</script>
+<script>
+/* 공기 블록스 — 저장소
+ * 실전 모드: 체크리스트와 같은 Firebase(Firestore)에 gonggi_* 컬렉션으로 저장, 비밀번호는 studentPins 공유
+ * 체험 모드: 이 브라우저(localStorage)에만 저장
+ *
+ * 공통 인터페이스
+ *   subscribe(cb)                    cb({ players: {이름: 저장된 값}, matches: [...오래된→최근], settings })
+ *   record(winnerId, loserId, base)  base(id) = 저장된 값이 없을 때 쓸 기본 선수 → Promise<match>
+ *   undoLast()                       → Promise<match>
+ *   updatePlayer(id, fields)         → Promise
+ *   getPin(id) / setPin(id, pin)     → Promise
+ *   saveSettings(settings)           → Promise
+ *   resetSeason(base)                → Promise
+ */
+(function (root) {
+  'use strict';
+  var GG = root.GG;
+  var STAT_FIELDS = ['points', 'wins', 'losses', 'streak', 'bestStreak', 'peak'];
+
+  function stats(p) {
+    var o = {};
+    STAT_FIELDS.forEach(function (k) { o[k] = p[k] || 0; });
+    return o;
+  }
+
+  function buildMatch(wp, lp, settings) {
+    var out = GG.applyResult(wp, lp, settings);
+    return {
+      out: out,
+      match: {
+        a: wp.id, b: lp.id, t: Date.now(),
+        gain: out.result.total, bonus: out.result.bonus, loss: out.result.loss, upset: out.result.upset,
+        before: { a: stats(wp), b: stats(lp) },
+        after: { a: out.winner.points, b: out.loser.points }
+      }
+    };
+  }
+
+  /* ───────── 실전: Firebase ───────── */
+  function FirebaseStore(cfg) {
+    if (!root.firebase.apps.length) root.firebase.initializeApp(cfg.FIREBASE);
+    this.db = root.firebase.firestore();
+    this.mode = 'live';
+    this.settings = Object.assign({}, GG.DEFAULT_SETTINGS);
+  }
+  FirebaseStore.prototype.subscribe = function (cb, onError) {
+    var self = this, db = this.db;
+    var data = { players: {}, matches: [], settings: self.settings };
+    var ready = { p: false, m: false, s: false };
+    function emit() { if (ready.p && ready.m && ready.s) cb(data); }
+    var fail = function (e) { if (onError) onError(e); };
+    db.collection('gonggi_players').onSnapshot(function (snap) {
+      data.players = {};
+      snap.forEach(function (d) { data.players[d.id] = d.data(); });
+      ready.p = true; emit();
+    }, fail);
+    db.collection('gonggi_matches').orderBy('t', 'desc').limit(300).onSnapshot(function (snap) {
+      data.matches = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }).reverse();
+      ready.m = true; emit();
+    }, fail);
+    db.collection('gonggi_settings').doc('main').onSnapshot(function (d) {
+      self.settings = Object.assign({}, GG.DEFAULT_SETTINGS, d.exists ? d.data() : {});
+      data.settings = self.settings;
+      ready.s = true; emit();
+    }, fail);
+  };
+  FirebaseStore.prototype.record = function (winnerId, loserId, base) {
+    var db = this.db, settings = this.settings;
+    var col = db.collection('gonggi_players');
+    var wRef = col.doc(winnerId), lRef = col.doc(loserId), mRef = db.collection('gonggi_matches').doc();
+    return db.runTransaction(function (tx) {
+      return Promise.all([tx.get(wRef), tx.get(lRef)]).then(function (docs) {
+        var wp = Object.assign(base(winnerId), docs[0].exists ? docs[0].data() : {}, { id: winnerId });
+        var lp = Object.assign(base(loserId), docs[1].exists ? docs[1].data() : {}, { id: loserId });
+        var r = buildMatch(wp, lp, settings);
+        tx.set(wRef, Object.assign({ name: winnerId }, stats(r.out.winner)), { merge: true });
+        tx.set(lRef, Object.assign({ name: loserId }, stats(r.out.loser)), { merge: true });
+        tx.set(mRef, r.match);
+        return Object.assign({ id: mRef.id }, r.match);
+      });
+    });
+  };
+  FirebaseStore.prototype.undoLast = function () {
+    var db = this.db;
+    return db.collection('gonggi_matches').orderBy('t', 'desc').limit(1).get().then(function (snap) {
+      if (snap.empty) throw new Error('취소할 대결이 없어요.');
+      var mDoc = snap.docs[0], m = mDoc.data();
+      var wRef = db.collection('gonggi_players').doc(m.a), lRef = db.collection('gonggi_players').doc(m.b);
+      return db.runTransaction(function (tx) {
+        return Promise.all([tx.get(wRef), tx.get(lRef)]).then(function (docs) {
+          var w = docs[0].data() || {}, l = docs[1].data() || {};
+          if (w.points !== m.after.a || l.points !== m.after.b) throw new Error('이 대결 뒤에 두 친구 점수가 바뀌어서 취소할 수 없어요.');
+          tx.set(wRef, m.before.a, { merge: true });
+          tx.set(lRef, m.before.b, { merge: true });
+          tx.delete(mDoc.ref);
+          return m;
+        });
+      });
+    });
+  };
+  FirebaseStore.prototype.updatePlayer = function (id, fields) {
+    return this.db.collection('gonggi_players').doc(id).set(Object.assign({ name: id }, fields), { merge: true });
+  };
+  FirebaseStore.prototype.getPin = function (id) {
+    return this.db.collection('studentPins').doc(id).get().then(function (d) { return d.exists && d.data().pin ? String(d.data().pin) : null; });
+  };
+  FirebaseStore.prototype.setPin = function (id, pin) {
+    // 체크리스트와 같은 모양으로 저장 → 두 앱에서 같은 비밀번호
+    return this.db.collection('studentPins').doc(id).set({ pin: pin, createdAt: root.firebase.firestore.FieldValue.serverTimestamp() });
+  };
+  FirebaseStore.prototype.saveSettings = function (s) {
+    return this.db.collection('gonggi_settings').doc('main').set(s);
+  };
+  FirebaseStore.prototype.resetSeason = function (base) {
+    var db = this.db;
+    function wipe(colName, fn) {
+      return db.collection(colName).get().then(function (snap) {
+        var docs = snap.docs, jobs = [];
+        for (var i = 0; i < docs.length; i += 400) {
+          var batch = db.batch();
+          docs.slice(i, i + 400).forEach(function (d) { fn(batch, d); });
+          jobs.push(batch.commit());
+        }
+        return Promise.all(jobs);
+      });
+    }
+    return wipe('gonggi_matches', function (b, d) { b.delete(d.ref); }).then(function () {
+      return wipe('gonggi_players', function (b, d) { b.set(d.ref, stats(base(d.id)), { merge: true }); });
+    });
+  };
+
+  /* ───────── 체험: 이 브라우저에만 ───────── */
+  var LOCAL_KEY = 'gonggi-blox-demo-v2';
+  function LocalStore(seed) {
+    this.mode = 'demo';
+    this.listeners = [];
+    var d = null;
+    try { d = JSON.parse(localStorage.getItem(LOCAL_KEY) || 'null'); } catch (e) { d = null; }
+    this.data = d && d.players ? d : seed();
+    this.data.settings = Object.assign({}, GG.DEFAULT_SETTINGS, this.data.settings || {});
+    this.data.pins = this.data.pins || {};
+  }
+  LocalStore.prototype._save = function () {
+    try { localStorage.setItem(LOCAL_KEY, JSON.stringify(this.data)); } catch (e) { /* 무시 */ }
+    var snap = { players: this.data.players, matches: this.data.matches.slice(-300), settings: this.data.settings };
+    this.listeners.forEach(function (cb) { cb(snap); });
+  };
+  LocalStore.prototype.subscribe = function (cb) { this.listeners.push(cb); this._save(); };
+  LocalStore.prototype.record = function (winnerId, loserId, base) {
+    var P = this.data.players;
+    var wp = Object.assign(base(winnerId), P[winnerId] || {}, { id: winnerId });
+    var lp = Object.assign(base(loserId), P[loserId] || {}, { id: loserId });
+    var r = buildMatch(wp, lp, this.data.settings);
+    P[winnerId] = Object.assign(P[winnerId] || {}, stats(r.out.winner));
+    P[loserId] = Object.assign(P[loserId] || {}, stats(r.out.loser));
+    var m = Object.assign({ id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }, r.match);
+    this.data.matches.push(m);
+    this._save();
+    return Promise.resolve(m);
+  };
+  LocalStore.prototype.undoLast = function () {
+    var m = this.data.matches.pop();
+    if (!m) return Promise.reject(new Error('취소할 대결이 없어요.'));
+    var P = this.data.players;
+    P[m.a] = Object.assign(P[m.a] || {}, m.before.a);
+    P[m.b] = Object.assign(P[m.b] || {}, m.before.b);
+    this._save();
+    return Promise.resolve(m);
+  };
+  LocalStore.prototype.updatePlayer = function (id, fields) {
+    this.data.players[id] = Object.assign(this.data.players[id] || {}, fields);
+    this._save();
+    return Promise.resolve();
+  };
+  LocalStore.prototype.getPin = function (id) { return Promise.resolve(this.data.pins[id] || null); };
+  LocalStore.prototype.setPin = function (id, pin) { this.data.pins[id] = pin; this._save(); return Promise.resolve(); };
+  LocalStore.prototype.saveSettings = function (s) { this.data.settings = s; this._save(); return Promise.resolve(); };
+  LocalStore.prototype.resetSeason = function (base) {
+    var P = this.data.players;
+    Object.keys(P).forEach(function (id) { Object.assign(P[id], stats(base(id))); });
+    this.data.matches = [];
+    this._save();
+    return Promise.resolve();
+  };
+  LocalStore.reset = function () { try { localStorage.removeItem(LOCAL_KEY); } catch (e) { /* 무시 */ } };
+
+  var api = { FirebaseStore: FirebaseStore, LocalStore: LocalStore, buildMatch: buildMatch, stats: stats };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.GGStore = api;
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+<script>
+/* 공기 블록스 — 화면 */
+(function () {
+  'use strict';
+
+  var GG = window.GG;
+  var GGStore = window.GGStore;
+  var cfg = window.GG_CONFIG || {};
+  var LIVE = !!(cfg.FIREBASE && window.firebase && cfg.STUDENTS && cfg.STUDENTS.length);
+  var DEMO_NAMES = ['하늘', '도윤', '서연', '지호', '민준', '하린', '시우', '수아', '예준', '지안', '은우', '채원', '유준', '나윤', '건우', '소율'];
+  var ROSTER = LIVE ? cfg.STUDENTS.slice() : DEMO_NAMES.map(function (n, i) { return { id: i + 1, name: n }; });
+  var TEACHER_PW = LIVE ? String(cfg.TEACHER_PASSWORD || '') : '0000';
+  var DEMO_PIN = '0000';
+  var LEAGUE = cfg.LEAGUE_NAME || '해바라기 리그';
+  var SEASON = cfg.SEASON || 1;
+
+  var SHIRTS = ['#c8423d', '#d97a2b', '#d9b23a', '#2f9e63', '#1f9aa0', '#3d72d9', '#6a4fd0', '#b8489a', '#4a5160', '#1a1d24', '#e8e4da', '#7a4e33'];
+  var FACES = ['smile', 'grin', 'cool', 'wink', 'wow', 'fierce'];
+  var SKIN = '#f2c94c';
+  var NAV = [
+    { id: 'home', label: '로비', icon: 'M12 2 3 7v10l9 5 9-5V7zm0 2.3 6.8 3.8L12 12 5.2 8.1zM5 9.8l6 3.4v6.6l-6-3.3zm8 10V13.2l6-3.4v6.7z' },
+    { id: 'battle', label: '대결', icon: 'M4 3h3l7 7-1.5 1.5L4 4zm16 0v3l-9 9-1.5-1.5L18.5 4zM3 17l4-4 4 4-1.5 1.5L8 17l-3 3-2-2 3-3-1.5-1.5zm18 0-4-4-4 4 1.5 1.5L16 17l3 3 2-2-3-3z' },
+    { id: 'rank', label: '랭킹', icon: 'M8 21v-8h8v8zm-6 0v-5h5v5zm15 0v-11h5v11zM12 2l1.8 3.6 4 .6-2.9 2.8.7 4L12 11.1 8.4 13l.7-4-2.9-2.8 4-.6z' },
+    { id: 'tiers', label: '티어', icon: 'M12 2l8 3.5-.8 8.2C18.6 18 15.8 20.6 12 22c-3.8-1.4-6.6-4-7.2-8.3L4 5.5zm0 5-4 3.5 4 6 4-6z' },
+    { id: 'history', label: '기록', icon: 'M12 3a9 9 0 1 1-9 9h2a7 7 0 1 0 2-5l2 2H3V3l2.6 2.6A9 9 0 0 1 12 3zm-1 4h2v5l4 2-1 1.7-5-2.7z' },
+    { id: 'settings', label: '선생님', icon: 'M12 1 3 5v6c0 5.5 3.8 10.7 9 12 5.2-1.3 9-6.5 9-12V5zm0 6a2.5 2.5 0 0 1 1 4.8V16h-2v-4.2A2.5 2.5 0 0 1 12 7z' }
+  ];
+
+  var data = null;            // 저장소에서 받은 값
+  var ui = { a: null, b: null, rankFilter: 'all', pairs: null, teacher: false, busy: false };
+  var uid = 0;
+  var prefs = loadPrefs();
+
+  /* ───────── 저장소 ───────── */
+  function baseStats() {
+    var s = (data && data.settings) || GG.DEFAULT_SETTINGS;
+    return { points: s.startPoints, wins: 0, losses: 0, streak: 0, bestStreak: 0, peak: s.startPoints };
+  }
+
+  /* 체험 모드 예시: 실력이 다른 16명이 2주 동안 대결한 기록 */
+  function demoSeed() {
+    var skill = [9, 7, 8, 4, 6, 5, 3, 6, 2, 7, 4, 5, 3, 1, 8, 2];
+    var seed = 11;
+    function rnd() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
+    var pl = {}, ms = [], pins = {};
+    var t = Date.now() - 1000 * 60 * 60 * 24 * 14;
+    ROSTER.forEach(function (st) { pl[st.name] = baseStats(); pins[st.name] = DEMO_PIN; });
+    for (var k = 0; k < 480; k++) {
+      var i1 = Math.floor(rnd() * ROSTER.length), i2 = Math.floor(rnd() * ROSTER.length);
+      if (i1 === i2) continue;
+      var w = rnd() < skill[i1] / (skill[i1] + skill[i2]) ? i1 : i2, l = w === i1 ? i2 : i1;
+      var wn = ROSTER[w].name, ln = ROSTER[l].name;
+      var r = GGStore.buildMatch(Object.assign({ id: wn }, pl[wn]), Object.assign({ id: ln }, pl[ln]), GG.DEFAULT_SETTINGS);
+      pl[wn] = GGStore.stats(r.out.winner);
+      pl[ln] = GGStore.stats(r.out.loser);
+      t += 1000 * 60 * (10 + Math.floor(rnd() * 40));
+      r.match.t = Math.min(t, Date.now() - 60000);
+      r.match.id = 'd' + k;
+      ms.push(r.match);
+    }
+    return { players: pl, matches: ms, pins: pins, settings: Object.assign({}, GG.DEFAULT_SETTINGS) };
+  }
+
+  var store = LIVE ? new GGStore.FirebaseStore(cfg) : new GGStore.LocalStore(demoSeed);
+
+  function loadPrefs() {
+    try { return Object.assign({ sound: true }, JSON.parse(localStorage.getItem('gonggi-blox-prefs') || '{}')); }
+    catch (e) { return { sound: true }; }
+  }
+  function savePrefs() { try { localStorage.setItem('gonggi-blox-prefs', JSON.stringify(prefs)); } catch (e) { /* 무시 */ } }
+
+  /* 명단 + 저장된 값 → 선수 목록 */
+  var cache = null;
+  function players() {
+    if (cache) return cache;
+    cache = ROSTER.map(function (st, i) {
+      var saved = (data && data.players[st.name]) || {};
+      return Object.assign({ color: SHIRTS[i % SHIRTS.length], face: FACES[(i * 5) % FACES.length], away: false }, baseStats(), saved,
+        { id: st.name, name: st.name, no: st.id });
+    });
+    return cache;
+  }
+  function byId(id) {
+    var list = players();
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+    return null;
+  }
+  function sorted(list) {
+    return (list || players()).slice().sort(function (a, b) {
+      return b.points - a.points || b.wins - a.wins || a.no - b.no;
+    });
+  }
+  function placeOf(p) { return sorted().indexOf(p) + 1; }
+  function matches() { return (data && data.matches) || []; }
+  function settings() { return (data && data.settings) || GG.DEFAULT_SETTINGS; }
+
+  /* ───────── 그림 ───────── */
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
+  }
+  function shade(hex, amt) {
+    var n = parseInt(hex.slice(1), 16);
+    var r = Math.max(0, Math.min(255, (n >> 16) + amt)), g = Math.max(0, Math.min(255, ((n >> 8) & 255) + amt)), b = Math.max(0, Math.min(255, (n & 255) + amt));
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+  }
+  function faceSvg(face) {
+    var eyes = '<ellipse cx="7" cy="8" rx="1.2" ry="1.8" fill="#16130c"/><ellipse cx="13" cy="8" rx="1.2" ry="1.8" fill="#16130c"/>';
+    var smile = '<path d="M6.2 12.4 Q10 15.6 13.8 12.4" stroke="#16130c" stroke-width="1.2" fill="none" stroke-linecap="round"/>';
+    switch (face) {
+      case 'grin': return eyes + '<path d="M5.6 11.6 Q10 18 14.4 11.6 Z" fill="#16130c"/><path d="M7 12 L13 12 L12.6 13 L7.4 13Z" fill="#fff"/>';
+      case 'cool': return '<path d="M3.6 6.4h12.8v1.6l-1 2.2h-4l-1.4-1.6-1.4 1.6h-4l-1-2.2z" fill="#0b0b0b"/>' + smile;
+      case 'wink': return '<ellipse cx="7" cy="8" rx="1.2" ry="1.8" fill="#16130c"/><path d="M11.6 8.3 Q13 7 14.4 8.3" stroke="#16130c" stroke-width="1.2" fill="none" stroke-linecap="round"/>' + smile;
+      case 'wow': return eyes + '<ellipse cx="10" cy="13.6" rx="1.6" ry="2" fill="#16130c"/>';
+      case 'fierce': return eyes + '<path d="M4.8 5.2 L8.8 6.7 M15.2 5.2 L11.2 6.7" stroke="#16130c" stroke-width="1.4" stroke-linecap="round"/><path d="M7.3 13.4 Q10 12.4 12.7 13.4" stroke="#16130c" stroke-width="1.2" fill="none" stroke-linecap="round"/>';
+      default: return eyes + smile;
+    }
+  }
+  /* 블록 캐릭터 (전신) — 오른쪽에 그늘을 넣어 입체감 */
+  function avatarFull(p) {
+    var c = p.color || SHIRTS[0], dk = shade(c, -45), lt = shade(c, 25);
+    return '<svg class="avatar-full" viewBox="0 0 60 84" aria-hidden="true">' +
+      '<rect x="15" y="54" width="14" height="28" rx="1.5" fill="#2b3446"/><rect x="31" y="54" width="14" height="28" rx="1.5" fill="#222a39"/>' +
+      '<rect x="3" y="27" width="11" height="27" rx="2" fill="' + SKIN + '"/><rect x="46" y="27" width="11" height="27" rx="2" fill="#cfa52f"/>' +
+      '<rect x="3" y="27" width="11" height="11" rx="2" fill="' + lt + '"/><rect x="46" y="27" width="11" height="11" rx="2" fill="' + dk + '"/>' +
+      '<rect x="14" y="26" width="32" height="29" rx="2" fill="' + c + '"/><rect x="30" y="26" width="16" height="29" rx="2" fill="' + dk + '" opacity=".35"/>' +
+      '<rect x="14" y="49" width="32" height="6" fill="' + dk + '"/><rect x="27" y="49" width="6" height="6" fill="#c8aa6e"/>' +
+      '<rect x="24" y="22" width="12" height="6" fill="#cfa52f"/>' +
+      '<rect x="17" y="2" width="26" height="23" rx="6" fill="' + SKIN + '"/><path d="M36 2h1a6 6 0 0 1 6 6v11a6 6 0 0 1-6 6h-1z" fill="#000" opacity=".1"/>' +
+      '<g transform="translate(19 3) scale(1.1)">' + faceSvg(p.face) + '</g></svg>';
+  }
+  function headshot(p, size) {
+    size = size || 34;
+    var c = p.color || SHIRTS[0];
+    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 40 40" style="flex-shrink:0;background:linear-gradient(180deg,#1a2338,#0b101b);border:1px solid #2a3550" aria-hidden="true">' +
+      '<rect x="5" y="29" width="30" height="14" rx="2" fill="' + c + '"/><rect x="10" y="5" width="20" height="20" rx="5" fill="' + SKIN + '"/>' +
+      '<g transform="translate(10 6)">' + faceSvg(p.face) + '</g></svg>';
+  }
+
+  /* 티어 엠블럼 — 티어가 오를수록 날개, 뿔, 왕관, 후광이 붙는다 */
+  function crest(rank, size) {
+    var t = rank.tier, i = rank.tierIndex, id = 'c' + (++uid);
+    var dk = shade(t.color, -70), mid = shade(t.color, -25);
+    var metal = 'url(#' + id + 'm)', glow = '', behind = '', above = '';
+    if (i >= 3) glow = '<circle cx="60" cy="58" r="52" fill="url(#' + id + 'g)"/>';
+    if (i >= 9) {
+      for (var k = 0; k < 16; k++) behind += '<path d="M60 58 L57 4 L63 4 Z" fill="' + t.light + '" opacity=".35" transform="rotate(' + (k * 22.5) + ' 60 58)"/>';
+    }
+    var wing = '';
+    if (i >= 7) wing = 'M34 34 L2 18 L14 38 L-2 44 L16 54 L2 64 L22 68 L10 82 L34 76 Z';
+    else if (i >= 5) wing = 'M34 36 L8 24 L18 40 L4 46 L20 54 L10 64 L34 66 Z';
+    else if (i >= 3) wing = 'M34 40 L14 34 L22 44 L12 50 L34 58 Z';
+    else if (i >= 1) wing = 'M34 44 L24 48 L34 54 Z';
+    if (wing) {
+      var w = '<path d="' + wing + '" fill="' + metal + '" stroke="' + dk + '" stroke-width="2" stroke-linejoin="round"/>';
+      behind += w + '<g transform="translate(120 0) scale(-1 1)">' + w + '</g>';
+    }
+    if (i >= 7) above += '<path d="M40 24 L42 6 L51 15 L60 0 L69 15 L78 6 L80 24 Z" fill="' + metal + '" stroke="' + dk + '" stroke-width="2" stroke-linejoin="round"/><circle cx="60" cy="8" r="3" fill="' + t.light + '"/>';
+    else if (i >= 2) above += '<path d="M53 22 L60 6 L67 22 Z" fill="' + metal + '" stroke="' + dk + '" stroke-width="2" stroke-linejoin="round"/>';
+    var plate = rank.division
+      ? '<path d="M44 96 H76 L80 103 L76 110 H44 L40 103 Z" fill="#0a0e17" stroke="' + t.color + '" stroke-width="1.5"/>' +
+        '<text x="60" y="107.5" text-anchor="middle" font-family="Cinzel, serif" font-weight="900" font-size="11" fill="' + t.light + '">' + rank.division + '</text>'
+      : '';
+    return '<svg class="crest" width="' + size + '" height="' + size + '" viewBox="-4 -2 128 116" role="img" aria-label="' + rank.label + '" style="flex-shrink:0;overflow:visible">' +
+      '<defs>' +
+      '<linearGradient id="' + id + 'm" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + t.light + '"/><stop offset=".45" stop-color="' + t.color + '"/><stop offset=".55" stop-color="' + mid + '"/><stop offset="1" stop-color="' + t.color + '"/></linearGradient>' +
+      '<radialGradient id="' + id + 'g"><stop offset="0" stop-color="' + t.color + '" stop-opacity=".55"/><stop offset="1" stop-color="' + t.color + '" stop-opacity="0"/></radialGradient>' +
+      '<radialGradient id="' + id + 'i" cx=".5" cy=".35"><stop offset="0" stop-color="' + mid + '"/><stop offset="1" stop-color="#05070c"/></radialGradient>' +
+      '<linearGradient id="' + id + 'j" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset=".35" stop-color="' + t.light + '"/><stop offset="1" stop-color="' + t.color + '"/></linearGradient>' +
+      '</defs>' + glow + behind +
+      '<path d="M60 14 L94 28 L94 64 Q94 90 60 106 Q26 90 26 64 L26 28 Z" fill="' + metal + '" stroke="' + dk + '" stroke-width="2.5" stroke-linejoin="round"/>' +
+      '<path d="M60 22 L86 33 L86 63 Q86 83 60 96 Q34 83 34 63 L34 33 Z" fill="url(#' + id + 'i)" stroke="' + t.light + '" stroke-opacity=".5" stroke-width="1"/>' +
+      '<path d="M60 36 L74 56 L60 80 L46 56 Z" fill="url(#' + id + 'j)" stroke="' + dk + '" stroke-width="1.5"/>' +
+      '<path d="M60 36 L74 56 L60 58 Z" fill="#fff" opacity=".35"/><path d="M46 56 L60 58 L60 80 Z" fill="#000" opacity=".2"/>' +
+      above + plate + '</svg>';
+  }
+  function logoMark(cls) {
+    // 육각 테두리 안의 공기 다섯 알
+    return '<svg class="' + (cls || 'logo-mark') + '" viewBox="0 0 40 40" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0e6d2"/><stop offset=".5" stop-color="#c8aa6e"/><stop offset="1" stop-color="#785a28"/></linearGradient></defs>' +
+      '<path d="M20 2 36 11v18L20 38 4 29V11z" fill="#0b101b" stroke="url(#lg)" stroke-width="2.4"/>' +
+      '<circle cx="20" cy="13" r="3.4" fill="url(#lg)"/><circle cx="13" cy="20" r="3.4" fill="#0ac8b9"/><circle cx="27" cy="20" r="3.4" fill="url(#lg)"/><circle cx="16" cy="27.5" r="3.4" fill="url(#lg)"/><circle cx="24" cy="27.5" r="3.4" fill="url(#lg)"/></svg>';
+  }
+  function navIcon(d, s) { return '<svg width="' + (s || 18) + '" height="' + (s || 18) + '" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="' + d + '"/></svg>'; }
+  function tierGlow(rank) { return 'radial-gradient(circle at 50% 60%,' + rank.tier.color + '55, transparent 62%), linear-gradient(180deg,#141c2e,#070a12)'; }
+  function lpBar(rank, pct) {
+    if (pct == null) pct = rank.lpMax ? Math.round(rank.lp / rank.lpMax * 100) : 100;
+    return '<div class="lpbar"><span style="width:' + pct + '%;background:linear-gradient(90deg,' + shade(rank.tier.color, -30) + ',' + rank.tier.light + ');box-shadow:0 0 10px ' + rank.tier.color + '"></span></div>';
+  }
+  function nextStepText(rank) {
+    var next = GG.TIERS[rank.tierIndex + 1];
+    if (rank.division && rank.division !== 'I') return '다음 단계까지 ' + (rank.lpMax - rank.lp) + ' LP';
+    if (next) return next.name + ' 승급까지 ' + (next.min - rank.points) + ' LP';
+    return '최고 티어 달성';
+  }
+  function ago(t) {
+    var d = (Date.now() - t) / 1000;
+    if (d < 60) return '방금';
+    if (d < 3600) return Math.floor(d / 60) + '분 전';
+    if (d < 86400) return Math.floor(d / 3600) + '시간 전';
+    if (d < 86400 * 7) return Math.floor(d / 86400) + '일 전';
+    var dt = new Date(t);
+    return (dt.getMonth() + 1) + '월 ' + dt.getDate() + '일';
+  }
+  function winRate(p) { var g = p.wins + p.losses; return g ? Math.round(p.wins / g * 100) : 0; }
+  function streakPill(p) {
+    if (p.streak >= 3) return '<span class="pill pill-gold">' + p.streak + '연승</span>';
+    if (p.streak >= 2) return '<span class="pill pill-up">' + p.streak + '연승</span>';
+    if (p.streak <= -3) return '<span class="pill pill-down">' + (-p.streak) + '연패</span>';
+    return '';
+  }
+  function lp(points) { return '<span class="lp">' + points + '<small>LP</small></span>'; }
+
+  /* ───────── 화면 틀 ───────── */
+  var main = document.getElementById('main');
+  var layer = document.getElementById('layer');
+
+  function route() { var r = (location.hash || '#home').slice(1); return VIEWS[r] ? r : 'home'; }
+
+  function render() {
+    cache = null;
+    var r = route();
+    renderNav(r);
+    if (!data) {
+      main.innerHTML = '<div class="loading">' + logoMark() + '<div>리그 정보를 불러오는 중…</div></div>';
+      return;
+    }
+    main.innerHTML = '<div class="page">' + VIEWS[r]() + '</div>';
+  }
+  function renderNav(active) {
+    document.getElementById('nav').innerHTML = NAV.map(function (n) {
+      return '<a class="navlink' + (n.id === active ? ' active' : '') + '" href="#' + n.id + '"' + (n.id === active ? ' aria-current="page"' : '') + '>' + navIcon(n.icon) + '<span>' + n.label + '</span></a>';
+    }).join('');
+  }
+  function demoBanner() {
+    if (LIVE) return '';
+    return '<div class="demo-banner"><div><b>체험 모드</b> <span class="muted">· 예시 선수와 기록이 들어 있어요. 학생 비밀번호와 선생님 비밀번호는 모두 <b class="num">0000</b>이에요. 체크리스트와 연결하면 실제 우리 반 명단으로 바뀌어요.</span></div></div>';
+  }
+
+  var VIEWS = {};
+
+  /* 로비 */
+  VIEWS.home = function () {
+    var list = sorted();
+    var stage = list.slice(0, 3).map(function (p, k) {
+      var r = GG.getRank(p.points);
+      return '<button class="champ champ-' + (k + 1) + '" type="button" data-profile="' + esc(p.id) + '">' + crest(r, k === 0 ? 72 : 52) + avatarFull(p) +
+        '<span class="champ-place">' + ['1ST', '2ND', '3RD'][k] + '</span><span class="champ-name">' + esc(p.name) + '</span>' + lp(p.points) + '</button>';
+    }).join('');
+
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    var ms = matches();
+    var todayCount = ms.filter(function (m) { return m.t >= today.getTime(); }).length;
+    var highest = list[0] ? GG.getRank(list[0].points) : null;
+    var upsets = ms.filter(function (m) { return m.upset; }).length;
+    var counts = GG.TIERS.map(function () { return 0; });
+    list.forEach(function (p) { counts[GG.getRank(p.points).tierIndex]++; });
+
+    return demoBanner() +
+      '<section class="hero"><div class="hero-copy"><span class="eyebrow">Season ' + SEASON + ' · ' + esc(LEAGUE) + '</span>' +
+      '<h1><span class="en gold-text">GONGGI LEGENDS</span>우리 반 최강의<br>공기 장인은 누구인가</h1>' +
+      '<p>친구에게 도전하고 승리해 LP를 모으세요. 나보다 높은 티어를 쓰러뜨리면 더 큰 보상이 기다립니다.</p>' +
+      '<div class="hero-actions"><a class="btn btn-play" href="#battle">PLAY <span class="ko">대결 시작</span></a><a class="link" href="#rank">전체 랭킹 →</a></div></div>' +
+      '<div class="hero-stage">' + stage + '</div></section>' +
+
+      '<div class="stat-strip"><div><b>' + ms.length + '</b><span>시즌 대결 수</span></div><div><b>' + todayCount + '</b><span>오늘 대결</span></div>' +
+      '<div><b>' + upsets + '</b><span>역전승</span></div><div><b style="font-family:var(--font-title);font-size:22px;line-height:1.35">' + (highest ? highest.label : '-') + '</b><span>최고 티어</span></div></div>' +
+
+      '<div class="grid-2"><section class="panel gilded section"><div class="section-head"><h2 class="title-rule">랭킹</h2><a href="#rank">전체 보기 →</a></div>' +
+      board(list.slice(0, 8)) + '</section>' +
+      '<div class="section"><section class="panel section"><div class="section-head"><h2>최근 대결</h2><a href="#history">기록 →</a></div>' + feed(ms.slice(-5).reverse()) + '</section>' +
+      '<section class="panel section"><h2>티어 분포</h2><div class="dist" role="img" aria-label="티어 분포">' + counts.map(function (c, i) {
+        return c ? '<span style="flex:' + c + ';background:' + GG.TIERS[i].color + ';box-shadow:0 0 8px ' + GG.TIERS[i].color + '"></span>' : '';
+      }).join('') + '</div><div class="dist-legend">' + counts.map(function (c, i) {
+        return c ? '<span><i style="background:' + GG.TIERS[i].color + '"></i>' + GG.TIERS[i].name + ' ' + c + '</span>' : '';
+      }).join('') + '</div></section></div></div>';
+  };
+
+  function boardRow(p, pos) {
+    var r = GG.getRank(p.points);
+    return '<button class="board-row' + (pos <= 3 ? ' top' : '') + '" type="button" data-profile="' + esc(p.id) + '">' +
+      '<span class="board-pos">' + pos + '</span>' +
+      '<span class="who">' + headshot(p, 38) + '<span style="min-width:0"><b>' + esc(p.name) + (p.away ? '<span class="away-tag">쉬는 중</span>' : '') + '</b>' +
+      '<span class="sub">' + p.wins + '승 ' + p.losses + '패 · 승률 ' + winRate(p) + '% ' + streakPill(p) + '</span></span></span>' +
+      '<span class="tier-tag">' + crest(r, 34) + '<span>' + r.label + '</span></span>' + lp(p.points) + '</button>';
+  }
+  function board(list) {
+    if (!list.length) return '<div class="empty">아직 선수가 없어요.</div>';
+    return '<div class="board">' + list.map(function (p, i) { return boardRow(p, i + 1); }).join('') + '</div>';
+  }
+
+  function feed(list) {
+    if (!list.length) return '<p class="muted" style="margin:0">아직 대결 기록이 없어요. 첫 대결의 주인공이 되어 보세요.</p>';
+    return '<div class="feed">' + list.map(function (m) {
+      var w = byId(m.a), l = byId(m.b);
+      if (!w || !l) return '';
+      var wr0 = GG.getRank(m.before.a.points), wr1 = GG.getRank(m.after.a);
+      var lr0 = GG.getRank(m.before.b.points), lr1 = GG.getRank(m.after.b);
+      var tags = '';
+      if (m.upset) tags += ' <span class="pill pill-gold">역전승</span>';
+      if (wr1.tierIndex > wr0.tierIndex) tags += ' <span class="pill pill-hex">' + esc(w.name) + ' ' + wr1.tier.name + ' 승급</span>';
+      else if (wr1.value > wr0.value) tags += ' <span class="pill pill-up">' + esc(w.name) + ' ' + wr1.label + '</span>';
+      if (lr1.value < lr0.value) tags += ' <span class="pill pill-down">' + esc(l.name) + ' ' + lr1.label + '</span>';
+      return '<div class="feed-row">' + headshot(w, 36) + '<div class="feed-text"><b>' + esc(w.name) + '</b> <span class="muted">승리 vs</span> ' + esc(l.name) + tags +
+        '<div class="feed-time">' + ago(m.t) + '</div></div><div style="text-align:right;line-height:1.2"><div class="up">+' + m.gain + '</div><div class="down">−' + m.loss + '</div></div></div>';
+    }).join('') + '</div>';
+  }
+
+  /* 랭킹 */
+  VIEWS.rank = function () {
+    var list = sorted(), f = ui.rankFilter;
+    var present = {};
+    list.forEach(function (p) { present[GG.getRank(p.points).tier.id] = true; });
+    var chips = '<button class="chip' + (f === 'all' ? ' on' : '') + '" type="button" data-filter="all">전체</button>' +
+      GG.TIERS.filter(function (t) { return present[t.id]; }).map(function (t) {
+        return '<button class="chip' + (f === t.id ? ' on' : '') + '" type="button" data-filter="' + t.id + '"><i style="background:' + t.color + '"></i>' + t.name + '</button>';
+      }).join('');
+    var rows = list.map(function (p, i) {
+      return f === 'all' || GG.getRank(p.points).tier.id === f ? boardRow(p, i + 1) : '';
+    }).join('');
+    return demoBanner() +
+      '<div class="page-head"><div><span class="eyebrow">Season ' + SEASON + ' Ranking</span><h1>랭킹</h1><p>LP가 높은 순서예요. 이름을 누르면 전적과 티어를 볼 수 있어요.</p></div><a class="btn btn-play" href="#battle">PLAY</a></div>' +
+      '<div class="filter-row">' + chips + '</div><section class="panel gilded tight">' + (rows ? '<div class="board">' + rows + '</div>' : '<div class="empty">이 티어에는 아직 아무도 없어요.</div>') + '</section>';
+  };
+
+  /* 대결 */
+  VIEWS.battle = function () {
+    var a = ui.a && byId(ui.a), b = ui.b && byId(ui.b);
+    var pv = a && b ? GG.preview(a, b, settings()) : null;
+
+    function side(p, key, cls, label) {
+      var head = '<span class="side-label">' + label + '</span>';
+      if (!p) {
+        return '<div class="side ' + cls + '">' + head + '<div class="side-empty"><div class="empty-slot">?</div>' +
+          '<button class="btn" type="button" data-pickside="' + key + '">선수 선택</button>' +
+          (key === 'b' && a ? '<span style="font-size:13px">아래 추천 상대를 눌러도 돼요</span>' : '') + '</div></div>';
+      }
+      var r = GG.getRank(p.points), mine = pv ? pv[key] : null;
+      return '<div class="side ' + cls + '">' + head +
+        '<div class="side-glow" style="background:radial-gradient(circle,' + r.tier.color + '66,transparent 65%)"></div>' +
+        avatarFull(p) + '<div class="side-name">' + esc(p.name) + '</div>' +
+        '<div class="tier-tag">' + crest(r, 40) + '<span>' + r.label + '</span></div>' +
+        '<div>' + lp(p.points) + ' ' + streakPill(p) + '</div>' +
+        (mine ? '<div class="stakes"><span class="stake up">승리 +' + mine.win + '</span><span class="stake down">패배 −' + mine.lose + '</span></div>' : '') +
+        '<button class="btn btn-sm btn-ghost" type="button" data-pickside="' + key + '">선수 바꾸기</button></div>';
+    }
+
+    var html = '<div class="page-head"><div><span class="eyebrow">Match Lobby</span><h1>대결</h1><p>두 선수를 고르고 공기 대결을 펼치세요. 끝나면 이긴 쪽을 누르고, 진 친구가 비밀번호로 결과를 확인해요.</p></div>' +
+      '<button class="btn" type="button" data-act="make-pairs">오늘의 대진표</button></div>';
+    if (ui.pairs) html += pairsView();
+    html += '<div class="arena">' + side(a, 'a', 'blue', 'BLUE') +
+      '<div class="vs"><div class="vs-text">VS</div>' + (a || b ? '<button class="btn btn-sm" type="button" data-act="swap" aria-label="양쪽 바꾸기">⇄</button>' : '') + '</div>' +
+      side(b, 'b', 'red', 'RED') + '</div>';
+
+    if (pv) {
+      var ca = Math.round(pv.a.chance * 100);
+      html += '<section class="panel gilded section"><div class="odds"><div class="odds-bar"><span style="flex:' + ca + '"></span><span style="flex:' + (100 - ca) + '"></span></div>' +
+        '<div class="odds-label"><span>' + esc(a.name) + ' 예상 승률 <b class="num">' + ca + '%</b></span><span><b class="num">' + (100 - ca) + '%</b> ' + esc(b.name) + '</span></div></div>' +
+        '<p class="muted" style="margin:0">' + matchHint(a, b, pv) + '</p>' +
+        '<h3 style="text-align:center;letter-spacing:.1em;color:var(--gold)">누가 이겼나요?</h3>' +
+        '<div class="decide"><button class="btn btn-side blue" type="button" data-win="a">' + esc(a.name) + ' 승리</button>' +
+        '<button class="btn btn-side red" type="button" data-win="b">' + esc(b.name) + ' 승리</button></div></section>';
+    }
+    html += a ? recommendView(a) : '<section class="panel section"><h2>상대 추천</h2><p class="muted" style="margin:0">BLUE 선수를 먼저 고르면 딱 맞는 상대를 추천해 드려요.</p></section>';
+    return html;
+  };
+
+  function matchHint(a, b, pv) {
+    if (Math.abs(a.points - b.points) < 40) return '팽팽한 실력의 대결. 승부는 한 판으로 갈립니다.';
+    var low = a.points < b.points ? a : b, high = low === a ? b : a;
+    var lowWin = low === a ? pv.a.win : pv.b.win, highLose = low === a ? pv.b.lose : pv.a.lose;
+    return esc(low.name) + '이(가) 이기면 <b class="up">+' + lowWin + ' LP</b> 대역전. ' + esc(high.name) + '은(는) 지면 <b class="down">−' + highLose + ' LP</b>를 잃어요.';
+  }
+
+  function recommendView(a) {
+    var rec = GG.recommend(a, players(), matches(), settings());
+    function item(c) {
+      var r = GG.getRank(c.student.points);
+      return '<button class="rec-item" type="button" data-opp="' + esc(c.student.id) + '">' + headshot(c.student, 40) +
+        '<span style="min-width:0"><b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.student.name) + '</b>' +
+        '<span class="muted" style="font-size:12px">' + r.label + ' · ' + (c.met ? c.met + '번 대결' : '첫 대결') + '</span></span>' +
+        '<span class="rec-gain"><span class="up">+' + c.preview.a.win + '</span><br><span class="down">−' + c.preview.a.lose + '</span></span></button>';
+    }
+    function group(title, desc, list, emptyText) {
+      return '<div class="rec-group"><h3>' + title + '</h3><p>' + desc + '</p>' + (list.length ? list.map(item).join('') : '<div class="rec-empty">' + emptyText + '</div>') + '</div>';
+    }
+    return '<section class="panel section"><div class="section-head"><h2>' + esc(a.name) + '의 추천 상대</h2></div><div class="rec-groups">' +
+      group('호적수', '점수가 가깝고 최근에 붙지 않은 친구', rec.close, '추천할 친구가 없어요') +
+      group('도전', '조금 높은 티어. 이기면 큰 보상', rec.challenge, '이미 정상에 있어요') +
+      group('첫 만남', '아직 한 번도 겨루지 않은 친구', rec.fresh, '더 추천할 친구가 없어요') + '</div></section>';
+  }
+
+  function pairsView() {
+    var p = ui.pairs;
+    return '<section class="panel gilded section"><div class="section-head"><h2>오늘의 대진표</h2><div style="display:flex;gap:8px">' +
+      '<button class="btn btn-sm" type="button" data-act="make-pairs">다시 섞기</button><button class="btn btn-sm btn-ghost" type="button" data-act="close-pairs">닫기</button></div></div>' +
+      '<p class="muted" style="margin:0;font-size:14px">실력이 비슷한 친구끼리, 최근에 붙은 상대는 피해서 짝을 지었어요.</p><div class="pairs">' +
+      p.pairs.map(function (pair, i) {
+        var x = byId(pair[0]), y = byId(pair[1]);
+        if (!x || !y) return '';
+        return '<div class="pair' + (p.done[i] ? ' done' : '') + '"><div class="p">' + headshot(x, 30) + '<span>' + esc(x.name) + '</span></div><span class="pv">VS</span>' +
+          '<div class="p">' + headshot(y, 30) + '<span>' + esc(y.name) + '</span></div><div class="pair-foot">' +
+          (p.done[i] ? '<span class="pill">완료</span>' : '<button class="btn btn-sm" type="button" data-pair="' + i + '">이 대결 시작</button>') + '</div></div>';
+      }).join('') + '</div>' +
+      (p.rest && byId(p.rest) ? '<p class="muted" style="margin:0;font-size:14px">' + esc(byId(p.rest).name) + '은(는) 이번 판은 쉬어요. 다시 섞으면 먼저 들어가요.</p>' : '') + '</section>';
+  }
+
+  /* 기록 */
+  VIEWS.history = function () {
+    var ms = matches().slice().reverse();
+    return '<div class="page-head"><div><span class="eyebrow">Match History</span><h1>대결 기록</h1><p>최근 ' + ms.length + '판. 잘못 기록된 결과는 선생님이 마지막 대결부터 취소할 수 있어요.</p></div>' +
+      (ms.length ? '<button class="btn" type="button" data-act="undo">마지막 대결 취소</button>' : '') + '</div>' +
+      '<section class="panel">' + feed(ms.slice(0, 150)) + '</section>';
+  };
+
+  /* 티어 안내 */
+  VIEWS.tiers = function () {
+    var counts = {};
+    players().forEach(function (p) { var id = GG.getRank(p.points).tier.id; counts[id] = (counts[id] || 0) + 1; });
+    var items = GG.TIERS.slice().reverse().map(function (t) {
+      var idx = GG.TIERS.indexOf(t), next = GG.TIERS[idx + 1];
+      var rank = GG.getRank(t.min + (t.divs ? GG.DIV_SIZE * 3 : 0));
+      return '<div class="panel ladder-item">' + crest(rank, 92) + '<div class="rank-en">' + t.en + '</div><div class="rank-name" style="color:' + t.light + '">' + t.name + '</div>' +
+        '<div class="range">' + (next ? t.min + ' – ' + (next.min - 1) : t.min + '+') + ' LP</div><div class="count">' + (t.divs ? 'IV · III · II · I' : '단계 없음') + ' · ' + (counts[t.id] || 0) + '명</div></div>';
+    }).join('');
+    var s = settings();
+    var ex = [['같은 티어', 500, 500], ['한 단계 아래가 승리', 450, 500], ['한 티어 아래가 승리', 400, 600], ['두 티어 아래가 승리', 300, 700], ['한 티어 위가 승리', 600, 400]].map(function (e) {
+      var r = GG.calcMatch(e[1], e[2], 0, s);
+      return '<tr><td>' + e[0] + '<div class="muted" style="font-size:12px">' + GG.getRank(e[1]).label + ' vs ' + GG.getRank(e[2]).label + '</div></td><td class="up">+' + r.gain + '</td><td class="down">−' + r.loss + '</td></tr>';
+    }).join('');
+    return '<div class="page-head"><div><span class="eyebrow">Ranked Tiers</span><h1>티어</h1><p>아이언부터 챌린저까지 10개 티어. 다이아몬드까지는 티어마다 IV → I 네 단계가 있어요.</p></div></div>' +
+      '<div class="ladder">' + items + '</div>' +
+      '<div class="grid-2"><section class="panel gilded section rules"><h2>LP 규칙</h2>' +
+      '<p>시즌 시작 시 모두 <b>' + GG.getRank(s.startPoints).label + '</b>(' + s.startPoints + ' LP)에서 출발해요.</p>' +
+      '<p>비슷한 실력의 친구를 이기면 <b class="up">+' + s.winBase + '</b>, 지면 <b class="down">−' + s.lossBase + '</b>.</p>' +
+      '<p><b>낮은 티어가 높은 티어를 쓰러뜨리면</b> 최대 +' + s.winBase * 2 + ' LP. 반대로 높은 티어가 지면 크게 잃어요.</p>' +
+      '<p>높은 티어가 낮은 티어를 이기면 조금만 올라요. 강한 상대에게 도전할수록 빨리 올라갑니다.</p>' +
+      (s.streakBonus ? '<p>3연승부터 <b>연승 보너스</b> (+2, +4 … 최대 +10).</p>' : '') +
+      '<p>결과는 <b>진 친구가 자기 비밀번호</b>를 넣어야 기록돼요. LP는 0 아래로 내려가지 않아요.</p></section>' +
+      '<section class="panel section"><h2>이런 대결이라면</h2><div class="table-wrap"><table class="example-table"><thead><tr><th>대결</th><th>승자</th><th>패자</th></tr></thead><tbody>' + ex + '</tbody></table></div></section></div>';
+  };
+
+  /* 선생님 */
+  VIEWS.settings = function () {
+    if (!ui.teacher) {
+      return '<div class="page-head"><div><span class="eyebrow">Teacher Console</span><h1>선생님 메뉴</h1><p>LP 규칙, 쉬는 학생, 새 시즌을 관리해요.</p></div></div>' +
+        '<section class="panel gilded pin-wrap" style="max-width:420px;margin:0 auto;width:100%"><h2>선생님 비밀번호</h2>' +
+        (LIVE && !TEACHER_PW ? '<p class="form-error">js/config.js에 선생님 비밀번호(TEACHER_PASSWORD)를 넣어 주세요.</p>' : '') +
+        '<input class="pin-input" id="teacher-pin" type="password" inputmode="numeric" maxlength="8" autocomplete="off" aria-label="선생님 비밀번호">' +
+        '<div class="form-error" id="teacher-err"></div><button class="btn btn-gold" type="button" data-act="teacher-login">열기</button></section>';
+    }
+    var s = settings();
+    var list = players().slice().sort(function (a, b) { return a.no - b.no; });
+    return '<div class="page-head"><div><span class="eyebrow">Teacher Console</span><h1>선생님 메뉴</h1><p>' +
+      (LIVE ? '해바라기 체크리스트와 연결됨 · 학생 ' + ROSTER.length + '명 · 비밀번호 공유' : '체험 모드 · 이 브라우저에만 저장돼요') + '</p></div>' +
+      '<button class="btn btn-ghost" type="button" data-act="teacher-logout">잠그기</button></div>' +
+      '<div class="grid-2"><section class="panel section"><h2>선수 명단</h2><p class="muted" style="margin:0;font-size:14px">' +
+      (LIVE ? '명단은 체크리스트와 같아요. 바꾸려면 js/config.js의 STUDENTS를 고쳐 주세요.' : '체험용 예시 명단이에요.') + ' 결석한 친구는 쉬는 중으로 두면 추천과 대진표에서 빠져요.</p>' +
+      '<div class="feed">' + list.map(function (p) {
+        var r = GG.getRank(p.points);
+        return '<div class="feed-row">' + headshot(p, 34) + '<div class="feed-text"><b>' + p.no + '. ' + esc(p.name) + '</b><div class="feed-time">' + r.label + ' · ' + p.points + ' LP · ' + p.wins + '승 ' + p.losses + '패</div></div>' +
+          '<label class="check" style="font-size:13px"><input type="checkbox" data-away="' + esc(p.id) + '"' + (p.away ? ' checked' : '') + '> 쉬는 중</label></div>';
+      }).join('') + '</div></section>' +
+      '<div class="section"><section class="panel gilded section"><h2>LP 규칙</h2>' +
+      '<div class="form-row"><label for="set-win">비슷한 친구를 이겼을 때 얻는 LP</label><input class="input" id="set-win" type="number" min="5" max="100" value="' + s.winBase + '"></div>' +
+      '<div class="form-row"><label for="set-loss">비슷한 친구에게 졌을 때 잃는 LP</label><input class="input" id="set-loss" type="number" min="0" max="100" value="' + s.lossBase + '"></div>' +
+      '<div class="form-row"><label for="set-start">시즌 시작 LP</label><select class="input" id="set-start">' +
+      [0, 200, 400, 600].map(function (v) { return '<option value="' + v + '"' + (s.startPoints === v ? ' selected' : '') + '>' + v + ' LP (' + GG.getRank(v).label + ')</option>'; }).join('') + '</select></div>' +
+      '<label class="check"><input type="checkbox" id="set-streak"' + (s.streakBonus ? ' checked' : '') + '> 연승 보너스</label>' +
+      '<div class="row-actions"><button class="btn btn-gold" type="button" data-act="save-settings">규칙 저장</button></div>' +
+      '<p class="muted" style="margin:0;font-size:13px">얻는 LP를 잃는 LP보다 크게 두면 대결을 많이 할수록 반 전체가 조금씩 올라가요.</p></section>' +
+      '<section class="panel section"><h2>백업</h2><p class="muted" style="margin:0;font-size:14px">지금 점수와 기록을 글자로 복사해 보관해요.</p>' +
+      '<div class="row-actions" style="justify-content:flex-start"><button class="btn" type="button" data-act="copy-backup">백업 코드 복사</button></div>' +
+      '<textarea class="input" id="backup-text" style="min-height:60px" readonly aria-label="백업 코드"></textarea></section>' +
+      '<section class="panel section"><h2>새 시즌</h2><p class="muted" style="margin:0;font-size:14px">캐릭터는 그대로 두고 모든 LP와 대결 기록을 지워요.</p>' +
+      '<div class="row-actions" style="justify-content:flex-start"><button class="btn btn-danger" type="button" data-act="reset-season">시즌 초기화</button>' +
+      (!LIVE ? '<button class="btn btn-ghost" type="button" data-act="reset-demo">예시 다시 채우기</button>' : '') + '</div></section></div></div>';
+  };
+
+  /* ───────── 창 ───────── */
+  function closeLayer() { layer.innerHTML = ''; }
+  function openLayer(html) { layer.innerHTML = '<div class="overlay" data-backdrop>' + html + '</div>'; }
+
+  function openPicker(sideKey) {
+    var other = sideKey === 'a' ? ui.b : ui.a;
+    openLayer('<div class="modal modal-wide" role="dialog" aria-modal="true" aria-label="선수 선택"><div class="modal-head"><div><span class="eyebrow">' + (sideKey === 'a' ? 'Blue' : 'Red') + ' Side</span><h2>선수 선택</h2></div>' +
+      '<button class="icon-btn" type="button" data-act="close" aria-label="닫기">✕</button></div><div class="roster">' +
+      sorted().map(function (p, i) {
+        var r = GG.getRank(p.points), off = p.id === other || p.away;
+        return '<button class="card" type="button" data-choose="' + esc(p.id) + '" data-side="' + sideKey + '"' + (off ? ' disabled' : '') + '>' +
+          '<div class="card-stage" style="background:' + tierGlow(r) + '"><span class="card-pos">' + (i + 1) + '</span>' + crest(r, 34) + avatarFull(p) + '</div>' +
+          '<span class="card-name">' + esc(p.name) + '</span><span class="card-tier">' + (p.away ? '쉬는 중' : r.label) + '</span></button>';
+      }).join('') + '</div></div>');
+  }
+
+  function openProfile(id) {
+    var p = byId(id);
+    if (!p) return;
+    var r = GG.getRank(p.points), peak = GG.getRank(p.peak || p.points);
+    var mine = matches().filter(function (m) { return m.a === id || m.b === id; }).slice(-8).reverse();
+    var recent = mine.length ? '<div class="feed">' + mine.map(function (m) {
+      var won = m.a === id, o = byId(won ? m.b : m.a);
+      return '<div class="feed-row">' + (o ? headshot(o, 30) : '<span></span>') + '<div class="feed-text"><b class="' + (won ? 'up' : 'down') + '">' + (won ? '승리' : '패배') + '</b> vs ' + (o ? esc(o.name) : '-') +
+        '<div class="feed-time">' + ago(m.t) + '</div></div><span class="' + (won ? 'up' : 'down') + '">' + (won ? '+' + m.gain : '−' + m.loss) + '</span></div>';
+    }).join('') + '</div>' : '<p class="muted" style="margin:0">아직 대결 기록이 없어요.</p>';
+    openLayer('<div class="modal" role="dialog" aria-modal="true" aria-label="' + esc(p.name) + ' 프로필">' +
+      '<div class="modal-head"><span class="eyebrow">Rank #' + placeOf(p) + '</span><button class="icon-btn" type="button" data-act="close" aria-label="닫기">✕</button></div>' +
+      '<div class="profile-top"><div class="profile-stage" style="background:' + tierGlow(r) + '">' + avatarFull(p) + '</div>' +
+      '<div class="section" style="gap:10px"><h1>' + esc(p.name) + '</h1><div class="profile-rank">' + crest(r, 74) +
+      '<div><div class="rank-en">' + r.tier.en + '</div><div class="rank-name" style="color:' + r.tier.light + '">' + r.label + '</div>' + lp(p.points) + '</div></div>' +
+      lpBar(r) + '<div class="muted" style="font-size:13px">' + nextStepText(r) + '</div></div></div>' +
+      '<div class="stats"><div class="stat"><b>' + p.wins + '</b><span>승리</span></div><div class="stat"><b>' + p.losses + '</b><span>패배</span></div>' +
+      '<div class="stat"><b>' + winRate(p) + '%</b><span>승률</span></div><div class="stat"><b>' + (p.bestStreak || 0) + '</b><span>최고 연승</span></div></div>' +
+      '<div class="muted" style="font-size:13px">시즌 최고: ' + peak.label + ' (' + (p.peak || p.points) + ' LP)</div>' +
+      '<div class="row-actions" style="justify-content:flex-start"><button class="btn btn-play" type="button" data-act="battle-with" data-id="' + esc(id) + '">PLAY <span class="ko">이 선수로 대결</span></button>' +
+      '<button class="btn" type="button" data-act="customize" data-id="' + esc(id) + '">캐릭터 꾸미기</button></div>' +
+      '<h3>최근 대결</h3>' + recent + '</div>');
+  }
+
+  function openCustomize(id) {
+    var p = byId(id);
+    openLayer('<div class="modal modal-sm" role="dialog" aria-modal="true" aria-label="캐릭터 꾸미기"><div class="modal-head"><h2>' + esc(p.name) + ' 꾸미기</h2>' +
+      '<button class="icon-btn" type="button" data-act="close" aria-label="닫기">✕</button></div>' +
+      '<div class="profile-stage" id="cz-preview" style="background:' + tierGlow(GG.getRank(p.points)) + ';height:150px">' + avatarFull(p) + '</div>' +
+      '<div class="form-row"><span class="label">옷 색</span><div class="swatches">' + SHIRTS.map(function (c) {
+        return '<button class="swatch' + (c === p.color ? ' on' : '') + '" type="button" data-color="' + c + '" style="background:' + c + '" aria-label="옷 색 ' + c + '"></button>';
+      }).join('') + '</div></div>' +
+      '<div class="form-row"><span class="label">표정</span><div class="faces">' + FACES.map(function (f) {
+        return '<button class="face-btn' + (f === p.face ? ' on' : '') + '" type="button" data-face="' + f + '" aria-label="표정 ' + f + '">' + headshot({ color: p.color, face: f }, 38) + '</button>';
+      }).join('') + '</div></div>' +
+      '<div class="row-actions"><button class="btn btn-ghost" type="button" data-act="close">취소</button><button class="btn btn-gold" type="button" data-act="save-look" data-id="' + esc(id) + '">저장</button></div></div>');
+    layer.dataset.color = p.color;
+    layer.dataset.face = p.face;
+  }
+
+  /* 본인 확인: 학생 비밀번호(체크리스트와 같음) 또는 선생님 비밀번호 */
+  function verifyStudent(id, title, desc, onOk) {
+    store.getPin(id).then(function (pin) {
+      if (!pin) return setupPin(id, onOk);
+      openLayer('<div class="modal modal-sm pin-wrap" role="dialog" aria-modal="true" aria-label="' + esc(title) + '">' +
+        '<span class="eyebrow">Confirm</span><h2>' + esc(title) + '</h2><p class="muted" style="margin:0">' + desc + '</p>' +
+        '<input class="pin-input" id="pin-in" type="password" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="비밀번호 4자리">' +
+        '<div class="form-error" id="pin-err"></div><div class="row-actions" style="justify-content:center"><button class="btn btn-ghost" type="button" data-act="close">취소</button>' +
+        '<button class="btn btn-gold" type="button" id="pin-ok">확인</button></div></div>');
+      var input = document.getElementById('pin-in');
+      input.focus();
+      function check() {
+        var v = input.value;
+        if (v === pin || (TEACHER_PW && v === TEACHER_PW)) { closeLayer(); onOk(); return; }
+        document.getElementById('pin-err').textContent = '비밀번호가 맞지 않아요.';
+        input.value = ''; input.classList.remove('shake'); void input.offsetWidth; input.classList.add('shake'); input.focus();
+      }
+      document.getElementById('pin-ok').onclick = check;
+      input.onkeydown = function (e) { if (e.key === 'Enter') check(); };
+    }, function () { toast('비밀번호를 확인하지 못했어요. 인터넷 연결을 확인해 주세요.', true); });
+  }
+  function setupPin(id, onOk) {
+    openLayer('<div class="modal modal-sm pin-wrap" role="dialog" aria-modal="true" aria-label="비밀번호 만들기"><span class="eyebrow">New PIN</span>' +
+      '<h2>' + esc(id) + '의 비밀번호 만들기</h2><p class="muted" style="margin:0">아직 비밀번호가 없어요. 4자리 숫자를 정해 주세요. 체크리스트에서도 같은 비밀번호를 써요.</p>' +
+      '<input class="pin-input" id="pin-new" type="password" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="새 비밀번호">' +
+      '<input class="pin-input" id="pin-new2" type="password" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="새 비밀번호 한 번 더" placeholder="한 번 더">' +
+      '<div class="form-error" id="pin-err"></div><div class="row-actions" style="justify-content:center"><button class="btn btn-ghost" type="button" data-act="close">취소</button>' +
+      '<button class="btn btn-gold" type="button" id="pin-ok">만들기</button></div></div>');
+    document.getElementById('pin-new').focus();
+    document.getElementById('pin-ok').onclick = function () {
+      var a = document.getElementById('pin-new').value, b = document.getElementById('pin-new2').value, err = document.getElementById('pin-err');
+      if (!/^\d{4}$/.test(a)) { err.textContent = '숫자 4자리를 넣어 주세요.'; return; }
+      if (a !== b) { err.textContent = '두 번 넣은 비밀번호가 달라요.'; return; }
+      store.setPin(id, a).then(function () { closeLayer(); toast('비밀번호를 만들었어요'); onOk(); }, function () { err.textContent = '저장하지 못했어요. 다시 해 주세요.'; });
+    };
+  }
+  function verifyTeacher(onOk) {
+    if (ui.teacher) return onOk();
+    openLayer('<div class="modal modal-sm pin-wrap" role="dialog" aria-modal="true" aria-label="선생님 확인"><span class="eyebrow">Teacher</span><h2>선생님 확인</h2>' +
+      '<input class="pin-input" id="pin-in" type="password" inputmode="numeric" maxlength="8" autocomplete="off" aria-label="선생님 비밀번호">' +
+      '<div class="form-error" id="pin-err"></div><div class="row-actions" style="justify-content:center"><button class="btn btn-ghost" type="button" data-act="close">취소</button><button class="btn btn-gold" type="button" id="pin-ok">확인</button></div></div>');
+    var input = document.getElementById('pin-in');
+    input.focus();
+    function check() {
+      if (TEACHER_PW && input.value === TEACHER_PW) { ui.teacher = true; closeLayer(); onOk(); }
+      else { document.getElementById('pin-err').textContent = '비밀번호가 맞지 않아요.'; input.value = ''; }
+    }
+    document.getElementById('pin-ok').onclick = check;
+    input.onkeydown = function (e) { if (e.key === 'Enter') check(); };
+  }
+  function ask(title, text, okLabel, onOk) {
+    openLayer('<div class="modal modal-sm" role="alertdialog" aria-modal="true" aria-label="' + esc(title) + '"><h2>' + esc(title) + '</h2><p style="margin:0" class="muted">' + text + '</p>' +
+      '<div class="row-actions"><button class="btn btn-ghost" type="button" data-act="close">아니요</button><button class="btn btn-danger" type="button" id="ask-ok">' + esc(okLabel) + '</button></div></div>');
+    var ok = document.getElementById('ask-ok');
+    ok.focus();
+    ok.onclick = function () { closeLayer(); onOk(); };
+  }
+
+  /* 승리 화면 */
+  function showResult(m) {
+    var w = byId(m.a), l = byId(m.b);
+    var wr0 = GG.getRank(m.before.a.points), wr1 = GG.getRank(m.after.a);
+    var lr0 = GG.getRank(m.before.b.points), lr1 = GG.getRank(m.after.b);
+    var tierUp = wr1.tierIndex > wr0.tierIndex;
+    function pct(r) { return r.lpMax ? Math.round(r.lp / r.lpMax * 100) : 100; }
+    var promo = '';
+    if (tierUp) promo = '<div class="promo">' + crest(wr1, 110) + '<div class="eyebrow">Promoted</div><div class="promo-text gold-text">' + wr1.label + ' 승급</div></div>';
+    else if (wr1.value > wr0.value) promo = '<div class="promo">' + crest(wr1, 74) + '<div class="promo-text" style="color:' + wr1.tier.light + '">' + wr1.label + ' 달성</div></div>';
+    var demote = lr1.value < lr0.value ? '<div class="promo-text down">' + esc(l.name) + ' · ' + lr1.label + '(으)로 내려갔어요. 다음 판에 되찾자!</div>' : '';
+    var startPct = wr1.value === wr0.value ? pct(wr0) : 0;
+    openLayer('<div class="result" role="dialog" aria-modal="true" aria-label="대결 결과"><div class="result-rays"></div>' +
+      '<div class="result-word">VICTORY</div>' + avatarFull(w) + '<div class="result-sub">' + esc(w.name) + (m.upset ? ' · 대역전승' : ' 승리') + '</div>' +
+      '<div class="panel gilded result-card">' +
+      '<div class="result-line"><span class="who">' + headshot(w, 36) + '<span><b>' + esc(w.name) + '</b><span class="sub">' + wr1.label + ' · ' + m.after.a + ' LP' + (m.bonus ? ' · 연승 보너스 +' + m.bonus : '') + '</span></span></span>' +
+      '<span class="result-delta up" id="gain-count">+0</span>' + lpBar(wr1, startPct) + '</div>' +
+      '<div class="result-line"><span class="who">' + headshot(l, 36) + '<span><b>' + esc(l.name) + '</b><span class="sub">' + lr1.label + ' · ' + m.after.b + ' LP</span></span></span>' +
+      '<span class="result-delta down">−' + m.loss + '</span></div>' + demote + '</div>' + promo +
+      '<div class="row-actions" style="justify-content:center"><button class="btn btn-ghost" type="button" data-act="undo-now">잘못 기록했어요</button><button class="btn btn-gold" type="button" data-act="close">계속하기</button></div></div>');
+    // LP 숫자 올라가기 + 막대 채우기
+    var counter = document.getElementById('gain-count'), start = performance.now();
+    (function tick(now) {
+      var k = Math.min(1, (now - start) / 900);
+      if (!counter.isConnected) return;
+      counter.textContent = '+' + Math.round(m.gain * (1 - Math.pow(1 - k, 3)));
+      if (k < 1) requestAnimationFrame(tick);
+    })(start);
+    var bar = layer.querySelector('.result-line .lpbar span');
+    setTimeout(function () { if (bar) bar.style.width = pct(wr1) + '%'; }, 300);
+    confetti(tierUp ? 120 : 50);
+    fanfare(tierUp);
+  }
+
+  function confetti(n) {
+    var box = document.createElement('div');
+    box.className = 'confetti';
+    var colors = ['#f0e6d2', '#c8aa6e', '#0ac8b9', '#785a28', '#ffffff'];
+    for (var i = 0; i < n; i++) {
+      var p = document.createElement('i');
+      p.style.left = Math.random() * 100 + '%';
+      p.style.background = colors[i % colors.length];
+      p.style.animationDuration = (1.8 + Math.random() * 1.8) + 's';
+      p.style.animationDelay = Math.random() * .5 + 's';
+      box.appendChild(p);
+    }
+    document.body.appendChild(box);
+    setTimeout(function () { box.remove(); }, 4200);
+  }
+
+  var audio = null;
+  function fanfare(big) {
+    if (!prefs.sound) return;
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      var now = audio.currentTime;
+      var boom = audio.createOscillator(), bg = audio.createGain();
+      boom.type = 'sine'; boom.frequency.setValueAtTime(110, now); boom.frequency.exponentialRampToValueAtTime(40, now + .6);
+      bg.gain.setValueAtTime(.35, now); bg.gain.exponentialRampToValueAtTime(.0001, now + .8);
+      boom.connect(bg); bg.connect(audio.destination); boom.start(now); boom.stop(now + .8);
+      var chords = big ? [[262, 330, 392], [294, 370, 440], [392, 494, 587, 784]] : [[262, 330, 392], [392, 494, 587]];
+      chords.forEach(function (ch, i) {
+        var t0 = now + .15 + i * .22, len = i === chords.length - 1 ? 1.1 : .2;
+        ch.forEach(function (f) {
+          var o = audio.createOscillator(), g = audio.createGain();
+          o.type = 'sawtooth'; o.frequency.value = f;
+          g.gain.setValueAtTime(.0001, t0); g.gain.exponentialRampToValueAtTime(.05, t0 + .03); g.gain.exponentialRampToValueAtTime(.0001, t0 + len);
+          o.connect(g); g.connect(audio.destination); o.start(t0); o.stop(t0 + len + .05);
+        });
+      });
+    } catch (e) { /* 소리 없이 진행 */ }
+  }
+
+  var toastTimer = null;
+  function toast(text, isError) {
+    var old = document.querySelector('.toast');
+    if (old) old.remove();
+    var t = document.createElement('div');
+    t.className = 'toast' + (isError ? ' error' : '');
+    t.setAttribute('role', 'status');
+    t.textContent = text;
+    document.body.appendChild(t);
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.remove(); }, 3500);
+  }
+  function fail(e) {
+    ui.busy = false;
+    toast(e && e.message && /[가-힣]/.test(e.message) ? e.message : '저장하지 못했어요. 인터넷 연결을 확인해 주세요.', true);
+  }
+
+  /* ───────── 동작 ───────── */
+  function recordWin(sideKey) {
+    var a = byId(ui.a), b = byId(ui.b);
+    if (!a || !b || ui.busy) return;
+    var w = sideKey === 'a' ? a : b, l = w === a ? b : a;
+    verifyStudent(l.id, l.name + '의 패배 확인', '<b>' + esc(w.name) + '</b> 승리를 기록할게요. 진 친구 <b>' + esc(l.name) + '</b>이(가) 비밀번호를 넣어 주세요.', function () {
+      ui.busy = true;
+      store.record(w.id, l.id, baseStats).then(function (m) {
+        ui.busy = false;
+        if (ui.pairs && ui.pairs.current != null) { ui.pairs.done[ui.pairs.current] = true; ui.pairs.current = null; render(); }
+        showResult(m);
+      }, fail);
+    });
+  }
+  function scrollToArena() { var el = document.querySelector('.arena'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+
+  document.addEventListener('click', function (e) {
+    if (e.target.matches && e.target.matches('[data-backdrop]')) { closeLayer(); return; }
+    var el = e.target.closest('[data-act],[data-profile],[data-filter],[data-win],[data-opp],[data-pair],[data-pickside],[data-choose],[data-color],[data-face]');
+    if (!el) return;
+    var d = el.dataset;
+    if (d.profile) return openProfile(d.profile);
+    if (d.filter) { ui.rankFilter = d.filter; return render(); }
+    if (d.pickside) return openPicker(d.pickside);
+    if (d.choose) { ui[d.side] = d.choose; closeLayer(); return render(); }
+    if (d.opp) { ui.b = d.opp; render(); return scrollToArena(); }
+    if (d.pair) {
+      var pr = ui.pairs.pairs[+d.pair];
+      ui.a = pr[0]; ui.b = pr[1]; ui.pairs.current = +d.pair;
+      render(); return scrollToArena();
+    }
+    if (d.win) return recordWin(d.win);
+    if (d.color || d.face) {
+      el.parentElement.querySelectorAll('.on').forEach(function (x) { x.classList.remove('on'); });
+      el.classList.add('on');
+      if (d.color) layer.dataset.color = d.color;
+      if (d.face) layer.dataset.face = d.face;
+      var prev = document.getElementById('cz-preview');
+      if (prev) prev.innerHTML = avatarFull({ color: layer.dataset.color, face: layer.dataset.face });
+      if (d.color) layer.querySelectorAll('.face-btn').forEach(function (b) { b.innerHTML = headshot({ color: d.color, face: b.dataset.face }, 38); });
+      return;
+    }
+    switch (d.act) {
+      case 'close': closeLayer(); break;
+      case 'swap': var t = ui.a; ui.a = ui.b; ui.b = t; render(); break;
+      case 'make-pairs':
+        var res = GG.autoPair(players(), matches());
+        // 지난번에 쉰 친구가 또 쉬지 않게
+        if (ui.pairs && ui.pairs.rest && res.rest && res.rest.id === ui.pairs.rest && res.pairs.length) {
+          var lastPair = res.pairs[res.pairs.length - 1], restP = res.rest;
+          res.rest = lastPair[1]; lastPair[1] = restP;
+        }
+        ui.pairs = { pairs: res.pairs.map(function (p) { return [p[0].id, p[1].id]; }), rest: res.rest ? res.rest.id : null, done: {}, current: null };
+        render();
+        break;
+      case 'close-pairs': ui.pairs = null; render(); break;
+      case 'battle-with':
+        ui.a = d.id; ui.b = null; closeLayer();
+        if (route() !== 'battle') location.hash = '#battle'; else render();
+        window.scrollTo(0, 0);
+        break;
+      case 'customize':
+        var who = byId(d.id);
+        verifyStudent(who.id, who.name + ' 확인', '내 캐릭터는 나만 꾸밀 수 있어요. 비밀번호를 넣어 주세요.', function () { openCustomize(who.id); });
+        break;
+      case 'save-look':
+        store.updatePlayer(d.id, { color: layer.dataset.color, face: layer.dataset.face }).then(function () { closeLayer(); toast('캐릭터를 저장했어요'); }, fail);
+        break;
+      case 'undo-now':
+        store.undoLast().then(function () { closeLayer(); toast('방금 대결을 취소했어요'); }, fail);
+        break;
+      case 'undo':
+        verifyTeacher(function () {
+          var lm = matches()[matches().length - 1];
+          if (!lm) return;
+          ask('마지막 대결을 취소할까요?', esc(lm.a) + ' 승리 vs ' + esc(lm.b) + ' (' + ago(lm.t) + ') 결과를 지우고 두 선수 LP를 대결 전으로 돌려요.', '취소하기', function () {
+            store.undoLast().then(function () { toast('마지막 대결을 취소했어요'); }, fail);
+          });
+        });
+        break;
+      case 'teacher-login':
+        var v = document.getElementById('teacher-pin').value;
+        if (TEACHER_PW && v === TEACHER_PW) { ui.teacher = true; render(); }
+        else document.getElementById('teacher-err').textContent = '비밀번호가 맞지 않아요.';
+        break;
+      case 'teacher-logout': ui.teacher = false; render(); break;
+      case 'save-settings':
+        store.saveSettings({
+          winBase: Math.max(5, Math.min(100, parseInt(document.getElementById('set-win').value, 10) || 25)),
+          lossBase: Math.max(0, Math.min(100, parseInt(document.getElementById('set-loss').value, 10) || 0)),
+          startPoints: parseInt(document.getElementById('set-start').value, 10) || 0,
+          streakBonus: document.getElementById('set-streak').checked
+        }).then(function () { toast('규칙을 저장했어요'); }, fail);
+        break;
+      case 'copy-backup':
+        var code = JSON.stringify({ app: 'gonggi-blox', savedAt: new Date().toISOString(), players: data.players, matches: data.matches, settings: data.settings });
+        var box = document.getElementById('backup-text');
+        box.value = code;
+        var selectIt = function () { box.select(); toast('칸의 코드를 Ctrl+C로 복사해 주세요'); };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(code).then(function () { toast('백업 코드를 복사했어요. 메모장에 붙여넣어 보관하세요'); }, selectIt);
+        } else selectIt();
+        break;
+      case 'reset-season':
+        ask('새 시즌을 시작할까요?', '모든 선수의 LP와 전적, 대결 기록이 지워져요. 되돌릴 수 없어요. 필요하면 먼저 백업해 두세요.', '시즌 초기화', function () {
+          store.resetSeason(baseStats).then(function () { ui.pairs = null; toast('새 시즌이 시작됐어요'); }, fail);
+        });
+        break;
+      case 'reset-demo':
+        GGStore.LocalStore.reset(); location.reload();
+        break;
+    }
+  });
+
+  document.addEventListener('change', function (e) {
+    var id = e.target.dataset && e.target.dataset.away;
+    if (id) store.updatePlayer(id, { away: e.target.checked }).then(function () { toast(id + (e.target.checked ? ' 쉬는 중' : ' 복귀')); }, fail);
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeLayer();
+    if (e.key === 'Enter' && e.target.id === 'teacher-pin') document.querySelector('[data-act="teacher-login"]').click();
+  });
+
+  /* 위쪽 바 */
+  document.getElementById('logo-slot').innerHTML = logoMark();
+  var modeChip = document.getElementById('mode-chip');
+  modeChip.className = 'mode-chip ' + (LIVE ? 'live' : 'demo');
+  modeChip.innerHTML = '<i></i><span>' + (LIVE ? '체크리스트 연결됨' : '체험 모드') + '</span>';
+  var soundBtn = document.getElementById('sound-btn');
+  function drawSound() {
+    soundBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/>' +
+      (prefs.sound ? '<path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>' : '<path d="M16 9l6 6M22 9l-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>') + '</svg>';
+    soundBtn.setAttribute('aria-pressed', String(prefs.sound));
+  }
+  soundBtn.addEventListener('click', function () { prefs.sound = !prefs.sound; savePrefs(); drawSound(); });
+  drawSound();
+
+  window.addEventListener('hashchange', function () { closeLayer(); render(); window.scrollTo(0, 0); });
+
+  render();
+  store.subscribe(function (d) { data = d; render(); },
+    function () { toast('리그 정보를 불러오지 못했어요. Firestore 규칙에서 gonggi_ 컬렉션을 허용했는지 확인해 주세요.', true); });
+})();
+</script>
+</body>
+</html>
