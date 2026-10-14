@@ -13,9 +13,7 @@
   var LEAGUE = cfg.LEAGUE_NAME || '해바라기 리그';
   var SEASON = cfg.SEASON || 1;
 
-  var SHIRTS = ['#c8423d', '#d97a2b', '#d9b23a', '#2f9e63', '#1f9aa0', '#3d72d9', '#6a4fd0', '#b8489a', '#4a5160', '#1a1d24', '#e8e4da', '#7a4e33'];
-  var FACES = ['smile', 'grin', 'cool', 'wink', 'wow', 'fierce'];
-  var SKIN = '#f2c94c';
+  var AV = window.GGAvatar;
   var NAV = [
     { id: 'home', label: '로비', icon: 'M12 2 3 7v10l9 5 9-5V7zm0 2.3 6.8 3.8L12 12 5.2 8.1zM5 9.8l6 3.4v6.6l-6-3.3zm8 10V13.2l6-3.4v6.7z' },
     { id: 'battle', label: '대결', icon: 'M4 3h3l7 7-1.5 1.5L4 4zm16 0v3l-9 9-1.5-1.5L18.5 4zM3 17l4-4 4 4-1.5 1.5L8 17l-3 3-2-2 3-3-1.5-1.5zm18 0-4-4-4 4 1.5 1.5L16 17l3 3 2-2-3-3z' },
@@ -74,8 +72,8 @@
     if (cache) return cache;
     cache = ROSTER.map(function (st, i) {
       var saved = (data && data.players[st.name]) || {};
-      return Object.assign({ color: SHIRTS[i % SHIRTS.length], face: FACES[(i * 5) % FACES.length], away: false }, baseStats(), saved,
-        { id: st.name, name: st.name, no: st.id });
+      return Object.assign({ away: false }, baseStats(), saved,
+        { id: st.name, name: st.name, no: st.id, look: AV.normalize(saved, i) });
     });
     return cache;
   }
@@ -102,38 +100,9 @@
     var r = Math.max(0, Math.min(255, (n >> 16) + amt)), g = Math.max(0, Math.min(255, ((n >> 8) & 255) + amt)), b = Math.max(0, Math.min(255, (n & 255) + amt));
     return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
   }
-  function faceSvg(face) {
-    var eyes = '<ellipse cx="7" cy="8" rx="1.2" ry="1.8" fill="#16130c"/><ellipse cx="13" cy="8" rx="1.2" ry="1.8" fill="#16130c"/>';
-    var smile = '<path d="M6.2 12.4 Q10 15.6 13.8 12.4" stroke="#16130c" stroke-width="1.2" fill="none" stroke-linecap="round"/>';
-    switch (face) {
-      case 'grin': return eyes + '<path d="M5.6 11.6 Q10 18 14.4 11.6 Z" fill="#16130c"/><path d="M7 12 L13 12 L12.6 13 L7.4 13Z" fill="#fff"/>';
-      case 'cool': return '<path d="M3.6 6.4h12.8v1.6l-1 2.2h-4l-1.4-1.6-1.4 1.6h-4l-1-2.2z" fill="#0b0b0b"/>' + smile;
-      case 'wink': return '<ellipse cx="7" cy="8" rx="1.2" ry="1.8" fill="#16130c"/><path d="M11.6 8.3 Q13 7 14.4 8.3" stroke="#16130c" stroke-width="1.2" fill="none" stroke-linecap="round"/>' + smile;
-      case 'wow': return eyes + '<ellipse cx="10" cy="13.6" rx="1.6" ry="2" fill="#16130c"/>';
-      case 'fierce': return eyes + '<path d="M4.8 5.2 L8.8 6.7 M15.2 5.2 L11.2 6.7" stroke="#16130c" stroke-width="1.4" stroke-linecap="round"/><path d="M7.3 13.4 Q10 12.4 12.7 13.4" stroke="#16130c" stroke-width="1.2" fill="none" stroke-linecap="round"/>';
-      default: return eyes + smile;
-    }
-  }
-  /* 블록 캐릭터 (전신) — 오른쪽에 그늘을 넣어 입체감 */
-  function avatarFull(p) {
-    var c = p.color || SHIRTS[0], dk = shade(c, -45), lt = shade(c, 25);
-    return '<svg class="avatar-full" viewBox="0 0 60 84" aria-hidden="true">' +
-      '<rect x="15" y="54" width="14" height="28" rx="1.5" fill="#2b3446"/><rect x="31" y="54" width="14" height="28" rx="1.5" fill="#222a39"/>' +
-      '<rect x="3" y="27" width="11" height="27" rx="2" fill="' + SKIN + '"/><rect x="46" y="27" width="11" height="27" rx="2" fill="#cfa52f"/>' +
-      '<rect x="3" y="27" width="11" height="11" rx="2" fill="' + lt + '"/><rect x="46" y="27" width="11" height="11" rx="2" fill="' + dk + '"/>' +
-      '<rect x="14" y="26" width="32" height="29" rx="2" fill="' + c + '"/><rect x="30" y="26" width="16" height="29" rx="2" fill="' + dk + '" opacity=".35"/>' +
-      '<rect x="14" y="49" width="32" height="6" fill="' + dk + '"/><rect x="27" y="49" width="6" height="6" fill="#c8aa6e"/>' +
-      '<rect x="24" y="22" width="12" height="6" fill="#cfa52f"/>' +
-      '<rect x="17" y="2" width="26" height="23" rx="6" fill="' + SKIN + '"/><path d="M36 2h1a6 6 0 0 1 6 6v11a6 6 0 0 1-6 6h-1z" fill="#000" opacity=".1"/>' +
-      '<g transform="translate(19 3) scale(1.1)">' + faceSvg(p.face) + '</g></svg>';
-  }
-  function headshot(p, size) {
-    size = size || 34;
-    var c = p.color || SHIRTS[0];
-    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 40 40" style="flex-shrink:0;background:linear-gradient(180deg,#1a2338,#0b101b);border:1px solid #2a3550" aria-hidden="true">' +
-      '<rect x="5" y="29" width="30" height="14" rx="2" fill="' + c + '"/><rect x="10" y="5" width="20" height="20" rx="5" fill="' + SKIN + '"/>' +
-      '<g transform="translate(10 6)">' + faceSvg(p.face) + '</g></svg>';
-  }
+  /* 블록 캐릭터 (그리기는 js/avatar.js) */
+  function avatarFull(p) { return AV.render(p.look || AV.normalize(p, 0), { no: p.no }); }
+  function headshot(p, size) { return AV.render(p.look || AV.normalize(p, 0), { mode: 'head', size: size || 34, no: p.no }); }
 
   /* 티어 엠블럼 — 티어가 오를수록 날개, 뿔, 왕관, 후광이 붙는다 */
   function crest(rank, size) {
@@ -514,20 +483,49 @@
       '<h3>최근 대결</h3>' + recent + '</div>');
   }
 
+  /* 캐릭터 꾸미기 — 시즌 최고 티어로 아이템이 열린다 */
+  var wardrobe = null; // { id, draft, tab, tier }
   function openCustomize(id) {
     var p = byId(id);
-    openLayer('<div class="modal modal-sm" role="dialog" aria-modal="true" aria-label="캐릭터 꾸미기"><div class="modal-head"><h2>' + esc(p.name) + ' 꾸미기</h2>' +
-      '<button class="icon-btn" type="button" data-act="close" aria-label="닫기">✕</button></div>' +
-      '<div class="profile-stage" id="cz-preview" style="background:' + tierGlow(GG.getRank(p.points)) + ';height:150px">' + avatarFull(p) + '</div>' +
-      '<div class="form-row"><span class="label">옷 색</span><div class="swatches">' + SHIRTS.map(function (c) {
-        return '<button class="swatch' + (c === p.color ? ' on' : '') + '" type="button" data-color="' + c + '" style="background:' + c + '" aria-label="옷 색 ' + c + '"></button>';
-      }).join('') + '</div></div>' +
-      '<div class="form-row"><span class="label">표정</span><div class="faces">' + FACES.map(function (f) {
-        return '<button class="face-btn' + (f === p.face ? ' on' : '') + '" type="button" data-face="' + f + '" aria-label="표정 ' + f + '">' + headshot({ color: p.color, face: f }, 38) + '</button>';
-      }).join('') + '</div></div>' +
-      '<div class="row-actions"><button class="btn btn-ghost" type="button" data-act="close">취소</button><button class="btn btn-gold" type="button" data-act="save-look" data-id="' + esc(id) + '">저장</button></div></div>');
-    layer.dataset.color = p.color;
-    layer.dataset.face = p.face;
+    wardrobe = { id: id, draft: Object.assign({}, p.look), tab: wardrobe && wardrobe.id === id ? wardrobe.tab : 'body', tier: GG.getRank(Math.max(p.peak || 0, p.points)).tierIndex };
+    drawWardrobe();
+  }
+  function drawWardrobe() {
+    var w = wardrobe, p = byId(w.id), tab = null;
+    AV.TABS.forEach(function (t) { if (t.id === w.tab) tab = t; });
+    var tabs = AV.TABS.map(function (t) {
+      return '<button class="wd-tab' + (t.id === w.tab ? ' on' : '') + '" type="button" data-wtab="' + t.id + '">' + t.label + '</button>';
+    }).join('');
+    var rows = tab.rows.map(function (row) {
+      var body;
+      if (row.colors) {
+        body = '<div class="swatches">' + row.colors.map(function (c) {
+          return '<button class="swatch' + (w.draft[row.key] === c ? ' on' : '') + '" type="button" data-wear="' + row.key + '" data-val="' + c + '" style="background:' + c + '" aria-label="' + row.label + ' ' + c + '"></button>';
+        }).join('') + '</div>';
+      } else {
+        body = '<div class="wd-items">' + row.items.map(function (it) {
+          var locked = it.unlock && it.unlock > w.tier;
+          var look = Object.assign({}, w.draft); look[row.key] = it.id;
+          var pic = AV.render(look, { mode: row.view === 'head' ? 'head' : 'full', size: 54, no: p.no });
+          var lockTier = locked ? GG.TIERS[it.unlock] : null;
+          return '<button class="wd-item' + (w.draft[row.key] === it.id ? ' on' : '') + (locked ? ' locked' : '') + '" type="button" data-wear="' + row.key + '" data-val="' + it.id + '"' +
+            (locked ? ' aria-disabled="true" title="' + lockTier.name + ' 달성 시 열려요"' : '') + '>' +
+            '<span class="wd-pic">' + pic + (locked ? '<span class="wd-lock">' + crest(GG.getRank(lockTier.min), 26) + '</span>' : '') + '</span>' +
+            '<span class="wd-name">' + it.name + '</span>' + (locked ? '<span class="wd-req" style="color:' + lockTier.light + '">' + lockTier.name + '</span>' : '') + '</button>';
+        }).join('') + '</div>';
+      }
+      return '<div class="form-row"><span class="label">' + row.label + '</span>' + body + '</div>';
+    }).join('');
+    var r = GG.getRank(p.points);
+    var html = ('<div class="modal modal-wide wardrobe" role="dialog" aria-modal="true" aria-label="캐릭터 꾸미기">' +
+      '<div class="modal-head"><div><span class="eyebrow">Wardrobe</span><h2>' + esc(p.name) + ' 꾸미기</h2></div><button class="icon-btn" type="button" data-act="close" aria-label="닫기">✕</button></div>' +
+      '<div class="wd-grid"><div class="wd-side"><div class="profile-stage wd-stage" style="background:' + tierGlow(r) + '">' + AV.render(w.draft, { no: p.no }) + '</div>' +
+      '<p class="muted" style="margin:0;font-size:13px">자물쇠 아이템은 그 티어에 오르면 열려요. 시즌 최고 기록 기준이라 내려가도 사라지지 않아요.</p>' +
+      '<div class="row-actions" style="justify-content:flex-start"><button class="btn btn-sm" type="button" data-act="wd-random">무작위</button><button class="btn btn-sm btn-ghost" type="button" data-act="wd-reset">처음 모습</button></div></div>' +
+      '<div class="wd-main"><div class="wd-tabs" role="tablist">' + tabs + '</div><div class="section">' + rows + '</div></div></div>' +
+      '<div class="row-actions"><button class="btn btn-ghost" type="button" data-act="close">취소</button><button class="btn btn-gold" type="button" data-act="save-look">저장</button></div></div>');
+    var cur = layer.querySelector('.wardrobe');
+    if (cur) cur.outerHTML = html; else openLayer(html);
   }
 
   /* 본인 확인: 학생 비밀번호(체크리스트와 같음) 또는 선생님 비밀번호 */
@@ -696,7 +694,7 @@
 
   document.addEventListener('click', function (e) {
     if (e.target.matches && e.target.matches('[data-backdrop]')) { closeLayer(); return; }
-    var el = e.target.closest('[data-act],[data-profile],[data-filter],[data-win],[data-opp],[data-pair],[data-pickside],[data-choose],[data-color],[data-face]');
+    var el = e.target.closest('[data-act],[data-profile],[data-filter],[data-win],[data-opp],[data-pair],[data-pickside],[data-choose],[data-wear],[data-wtab]');
     if (!el) return;
     var d = el.dataset;
     if (d.profile) return openProfile(d.profile);
@@ -710,14 +708,10 @@
       render(); return scrollToArena();
     }
     if (d.win) return recordWin(d.win);
-    if (d.color || d.face) {
-      el.parentElement.querySelectorAll('.on').forEach(function (x) { x.classList.remove('on'); });
-      el.classList.add('on');
-      if (d.color) layer.dataset.color = d.color;
-      if (d.face) layer.dataset.face = d.face;
-      var prev = document.getElementById('cz-preview');
-      if (prev) prev.innerHTML = avatarFull({ color: layer.dataset.color, face: layer.dataset.face });
-      if (d.color) layer.querySelectorAll('.face-btn').forEach(function (b) { b.innerHTML = headshot({ color: d.color, face: b.dataset.face }, 38); });
+    if (d.wtab) { wardrobe.tab = d.wtab; return drawWardrobe(); }
+    if (d.wear) {
+      if (AV.isLocked(d.wear, d.val, wardrobe.tier)) { toast(AV.findItem(d.wear, d.val).name + ' — ' + GG.TIERS[AV.findItem(d.wear, d.val).unlock].name + ' 티어에 오르면 열려요'); return; }
+      wardrobe.draft[d.wear] = d.val; drawWardrobe();
       return;
     }
     switch (d.act) {
@@ -744,7 +738,19 @@
         verifyStudent(who.id, who.name + ' 확인', '내 캐릭터는 나만 꾸밀 수 있어요. 비밀번호를 넣어 주세요.', function () { openCustomize(who.id); });
         break;
       case 'save-look':
-        store.updatePlayer(d.id, { color: layer.dataset.color, face: layer.dataset.face }).then(function () { closeLayer(); toast('캐릭터를 저장했어요'); }, fail);
+        store.updatePlayer(wardrobe.id, AV.allowed(wardrobe.draft, wardrobe.tier)).then(function () { closeLayer(); toast('캐릭터를 저장했어요'); }, fail);
+        break;
+      case 'wd-random':
+        AV.TABS.forEach(function (t) {
+          t.rows.forEach(function (row) {
+            var opts = row.colors || row.items.filter(function (it) { return !(it.unlock && it.unlock > wardrobe.tier); }).map(function (it) { return it.id; });
+            wardrobe.draft[row.key] = opts[Math.floor(Math.random() * opts.length)];
+          });
+        });
+        drawWardrobe();
+        break;
+      case 'wd-reset':
+        wardrobe.draft = AV.defaults(ROSTER.map(function (st) { return st.name; }).indexOf(wardrobe.id)); drawWardrobe();
         break;
       case 'undo-now':
         store.undoLast().then(function () { closeLayer(); toast('방금 대결을 취소했어요'); }, fail);

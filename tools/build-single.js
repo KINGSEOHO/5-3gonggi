@@ -9,7 +9,7 @@ const inline = (src) => '<script>\n' + read(src) + '</script>';
 
 let html = read('index.html')
   .replace('<link rel="stylesheet" href="css/style.css">', () => '<style>\n' + read('css/style.css') + '</style>');
-['js/config.js', 'js/logic.js', 'js/store.js', 'js/app.js'].forEach((src) => {
+['js/config.js', 'js/logic.js', 'js/store.js', 'js/avatar.js', 'js/app.js'].forEach((src) => {
   html = html.replace('<script src="' + src + '"></script>', () => inline(src));
 });
 
