@@ -9,9 +9,23 @@
  * FIREBASE 가 비어 있으면 이 컴퓨터에만 저장되는 체험 모드로 열려요.
  */
 window.GG_CONFIG = {
-  FIREBASE: null, // 예: { apiKey: "...", authDomain: "...", projectId: "...", ... }
-  STUDENTS: [],   // 예: [{ id: 1, name: "홍길동" }, { id: 2, name: "김철수" }]
-  TEACHER_PASSWORD: '',
+  FIREBASE: ({
+  apiKey: "AIzaSyAs4VI1JZNxnIWb5wUe5b1k9YbiXxSc7ro",
+  authDomain: "sunflower-checklist.firebaseapp.com",
+  projectId: "sunflower-checklist",
+  storageBucket: "sunflower-checklist.firebasestorage.app",
+  messagingSenderId: "339122015370",
+  appId: "1:339122015370:web:dbb2579440d18568d67173"
+});
+  STUDENTS = [
+  {id:1,name:"길선균"},{id:2,name:"김시우"},{id:3,name:"김주혁"},{id:4,name:"김지안"},
+  {id:5,name:"류승호"},{id:6,name:"박인채"},{id:7,name:"박제이"},{id:8,name:"박준혁"},
+  {id:9,name:"박태현"},{id:10,name:"배규연"},{id:11,name:"임순"},{id:12,name:"정한율"},
+  {id:13,name:"고예은"},{id:14,name:"김가율"},{id:15,name:"김규빈"},{id:16,name:"김윤재"},
+  {id:17,name:"박세아"},{id:18,name:"박예솜"},{id:19,name:"신수아"},{id:20,name:"심해나"},
+  {id:21,name:"장하나"},{id:22,name:"정유주"}
+];
+  TEACHER_PASSWORD: '9494',
   LEAGUE_NAME: '해바라기 리그',
   SEASON: 1
 };
