@@ -528,3 +528,14 @@ td { padding: 9px 10px; border-bottom: 1px solid rgba(38, 49, 73, .7); white-spa
 .inbox.incoming { border-color: var(--gold); box-shadow: 0 0 24px rgba(200, 170, 110, .25), inset 0 0 30px rgba(200, 170, 110, .08); animation: glow-pulse 2s ease-in-out infinite; }
 @keyframes glow-pulse { 50% { box-shadow: 0 0 34px rgba(200, 170, 110, .45), inset 0 0 30px rgba(200, 170, 110, .14); } }
 @media (max-width: 480px) { .me-chip span { display: none; } .me-chip { padding: 0 4px; } }
+
+/* ── 새 반 만들기 안내 ── */
+.setup { gap: 22px; }
+.setup-step { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 14px; align-items: start; }
+.setup-step h3 { font-family: var(--font-title); font-size: 19px; color: var(--gold-hi); margin-bottom: 6px; }
+.setup-step p { margin: 0 0 8px; color: #c3c8d2; }
+.setup-no {
+  width: 40px; height: 40px; display: grid; place-items: center; font-family: var(--font-epic); font-weight: 900; font-size: 18px;
+  color: #1a1408; background: linear-gradient(180deg, var(--gold-hi), var(--gold)); clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+}
+textarea.code { min-height: 140px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; white-space: pre; overflow: auto; }

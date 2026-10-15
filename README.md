@@ -32,6 +32,21 @@
 - 비밀번호가 아직 없는 학생은 처음 쓸 때 만들고, 그 비밀번호는 체크리스트에서도 똑같이 쓰여요.
 - **선생님 메뉴**: LP 규칙, 결석한 학생 "쉬는 중" 처리, 마지막 대결 취소, 백업, 새 시즌 초기화.
 
+## 다른 선생님 반 (구글 시트, Firebase 없이)
+
+다른 선생님은 **https://kingseoho.github.io/5-3gonggi/?setup** 에 들어가 안내대로 하면 돼요 (10분).
+
+1. 선생님 계정으로 새 구글 시트 → 확장 프로그램 → Apps Script → 안내 화면의 코드(`apps-script/Code.gs`) 붙여넣기
+2. 배포 → 새 배포 → 웹 앱 (실행: 나, 액세스: 모든 사용자) → 웹 앱 URL 복사
+3. 안내 화면에 URL 붙여넣기 → 반 이름, 선생님 비밀번호, 학생 명단 입력 → **반 만들기**
+4. 선생님 메뉴의 **링크 나눠주기**(주소 `…/5-3gonggi/?sheet=웹앱ID`)를 클래스룸에 올리기
+
+- 명단·경기 기록·학생 비밀번호는 **그 선생님 시트에만** 저장돼요. 시트의 `경기` 탭에서 기록을 직접 보거나 고칠 수도 있어요.
+- 학생 비밀번호와 선생님 비밀번호는 시트 밖(앱)으로 내보내지 않고 시트 안에서 확인해요. 선생님 전용 기능(수정·삭제·규칙·쉬는 중·명단·새 시즌)은 시트가 선생님 비밀번호를 확인해야 실행돼요.
+- 실시간 알림 대신 5초마다 바뀐 게 있는지 확인해요(화면이 보일 때만).
+- 학교 계정에서 "모든 사용자" 배포가 막혀 있으면 개인 구글 계정으로 만들어야 해요.
+- 주소에 아무것도 없이 들어오면: config.js 의 Firebase 반(해바라기반) → 없으면 그 크롬북에서 마지막으로 연 시트 반 → 없으면 안내 화면. `?demo` 는 체험 모드.
+
 ## 체크리스트와 연결하기 (처음 한 번)
 
 `js/config.js`를 열고 체크리스트 `app.js` 맨 위에 있는 내용을 그대로 옮겨 적어요.
@@ -91,13 +106,14 @@ GitHub 저장소 Settings → Pages → Source: Deploy from a branch → 브랜�
 ## 개발
 
 ```
-npm test        # 점수·티어·추천 계산, 저장소(가짜 Firestore) 테스트
+npm test        # 점수·티어·추천 계산, 저장소(가짜 Firestore), Apps Script(가짜 시트) 테스트
 npm run build   # dist/gonggi-legends.html
 ```
 
 - `js/config.js` 연동 설정
 - `js/logic.js` 티어·LP·추천·대진표 계산
-- `js/store.js` 저장소 (Firestore / 체험용 localStorage)
+- `js/store.js` 저장소 (Firestore / 구글 시트 / 체험용 localStorage)
+- `apps-script/Code.gs` 다른 선생님 반의 서버 (구글 시트에 붙이는 Apps Script)
 - `js/avatar.js` 캐릭터 옷장과 그리기
 - `js/app.js` 화면
 - `css/style.css` 디자인

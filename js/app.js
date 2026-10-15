@@ -5,16 +5,40 @@
   var GG = window.GG;
   var GGStore = window.GGStore;
   var cfg = window.GG_CONFIG || {};
+  /* 어떤 반을 열지 정한다
+     ?sheet=웹앱ID  → 그 선생님의 구글 시트 반
+     ?setup         → 새 반 만들기 안내
+     ?demo          → 체험
+     (주소에 아무것도 없으면) config.js 의 Firebase 반 → 없으면 이 크롬북에 기억된 시트 반 → 없으면 안내 */
+  var params = new URLSearchParams(location.search);
+  function sheetUrlFrom(v) {
+    v = String(v || '').trim();
+    var m = v.match(/\/macros\/s\/([\w-]+)/);
+    if (m) return 'https://script.google.com/macros/s/' + m[1] + '/exec';
+    return /^[\w-]{20,}$/.test(v) ? 'https://script.google.com/macros/s/' + v + '/exec' : '';
+  }
+  function sheetIdOf(url) { var m = String(url).match(/\/macros\/s\/([\w-]+)/); return m ? m[1] : ''; }
+  var savedSheet = '';
+  try { savedSheet = localStorage.getItem('gonggi-sheet') || ''; } catch (e) { savedSheet = ''; }
   var CONFIGURED = !!(cfg.FIREBASE && cfg.STUDENTS && cfg.STUDENTS.length);
+  var MODE = params.get('sheet') ? 'sheet' : params.has('setup') ? 'setup' : (params.has('demo') || cfg.DEMO_ONLY) ? 'demo'
+    : CONFIGURED ? 'firebase' : savedSheet ? 'sheet' : 'setup';
+  var SHEET_URL = MODE === 'sheet' ? sheetUrlFrom(params.get('sheet') || savedSheet) : '';
+  if (MODE === 'sheet' && !SHEET_URL) MODE = 'setup';
+  if (SHEET_URL) { try { localStorage.setItem('gonggi-sheet', SHEET_URL); } catch (e) { /* 무시 */ } }
+  var SHEET = MODE === 'sheet';
+  var SETUP = MODE === 'setup';
   // 설정은 있는데 Firebase를 못 불러왔으면 체험 모드로 바꾸지 않고 오류를 보여 준다 (예시 기록을 실제로 착각하지 않게)
-  var OFFLINE = CONFIGURED && !window.firebase;
-  var LIVE = CONFIGURED && !OFFLINE;
+  var OFFLINE = MODE === 'firebase' && !window.firebase;
+  var LIVE = MODE === 'firebase' && !OFFLINE;
+  var REAL = LIVE || SHEET;
   var DEMO_NAMES = ['하늘', '도윤', '서연', '지호', '민준', '하린', '시우', '수아', '예준', '지안', '은우', '채원', '유준', '나윤', '건우', '소율'];
-  var ROSTER = LIVE ? cfg.STUDENTS.slice() : DEMO_NAMES.map(function (n, i) { return { id: i + 1, name: n }; });
-  var TEACHER_PW = LIVE ? String(cfg.TEACHER_PASSWORD || '') : '0000';
+  var ROSTER = LIVE ? cfg.STUDENTS.slice() : SHEET ? [] : DEMO_NAMES.map(function (n, i) { return { id: i + 1, name: n }; });
+  var TEACHER_PW = LIVE ? String(cfg.TEACHER_PASSWORD || '') : SHEET ? '' : '0000';
   var DEMO_PIN = '0000';
-  var LEAGUE = cfg.LEAGUE_NAME || '해바라기 리그';
+  var LEAGUE = SHEET ? '우리 반 리그' : cfg.LEAGUE_NAME || '해바라기 리그';
   var SEASON = cfg.SEASON || 1;
+  var CLASS_LINK = location.origin + location.pathname + (SHEET ? '?sheet=' + sheetIdOf(SHEET_URL) : '');
 
   var AV = window.GGAvatar;
   var NAV = [
@@ -31,7 +55,7 @@
   var seen = {}, firstLoad = true, wantResult = {}; // 이미 본 대결 (다른 크롬북에서 확정된 내 대결 알림용)
   var ui = { a: null, b: null, rankFilter: 'all', pairs: null, teacher: false, busy: false };
   /* 이 크롬북의 주인 (로그인한 학생). 각자 크롬북에서 쓰는 걸 기본으로 한다 */
-  var ME_KEY = LIVE ? 'gonggi-me' : 'gonggi-me-demo';
+  var ME_KEY = LIVE ? 'gonggi-me' : SHEET ? 'gonggi-me-' + sheetIdOf(SHEET_URL).slice(-12) : 'gonggi-me-demo';
   var me = null;
   try { me = localStorage.getItem(ME_KEY); } catch (e) { me = null; }
   if (me && !ROSTER.some(function (st) { return st.name === me; })) me = null;
@@ -64,7 +88,8 @@
     return { players: {}, matches: ms, pins: pins, settings: Object.assign({}, GG.DEFAULT_SETTINGS) };
   }
 
-  var store = OFFLINE ? null : LIVE ? new GGStore.FirebaseStore(cfg) : new GGStore.LocalStore(demoSeed);
+  var store = OFFLINE || SETUP ? null : LIVE ? new GGStore.FirebaseStore(cfg) : SHEET ? new GGStore.SheetStore(SHEET_URL) : new GGStore.LocalStore(demoSeed);
+  if (store && !SHEET) store.teacherPw = TEACHER_PW;
 
   function loadPrefs() {
     try { return Object.assign({ sound: true }, JSON.parse(localStorage.getItem('gonggi-blox-prefs') || '{}')); }
@@ -200,6 +225,8 @@
         '<button class="btn" type="button" onclick="location.reload()">새로고침</button></div>';
       return;
     }
+    if (SETUP) { main.innerHTML = '<div class="page">' + setupView() + '</div>'; loadScriptCode(); return; }
+    if (SHEET && data && !data.ready) { main.innerHTML = '<div class="page">' + initView() + '</div>'; return; }
     if (!data) {
       main.innerHTML = '<div class="loading">' + logoMark() + '<div>리그 정보를 불러오는 중…</div></div>';
       return;
@@ -208,12 +235,13 @@
     main.innerHTML = '<div class="page">' + inbox() + VIEWS[r]() + '</div>';
   }
   function renderNav(active) {
+    if (SETUP) { document.getElementById('nav').innerHTML = ''; return; }
     document.getElementById('nav').innerHTML = NAV.map(function (n) {
       return '<a class="navlink' + (n.id === active ? ' active' : '') + '" href="#' + n.id + '"' + (n.id === active ? ' aria-current="page"' : '') + '>' + navIcon(n.icon) + '<span>' + n.label + '</span></a>';
     }).join('');
   }
   function demoBanner() {
-    if (LIVE) return '';
+    if (REAL) return '';
     return '<div class="demo-banner"><div><b>체험 모드</b> <span class="muted">· 예시 선수와 기록이 들어 있어요. 학생 비밀번호와 선생님 비밀번호는 모두 <b class="num">0000</b>이에요. 체크리스트와 연결하면 실제 우리 반 명단으로 바뀌어요.</span></div></div>';
   }
 
@@ -236,6 +264,43 @@
       }
     });
     return html;
+  }
+
+  /* 새 반 만들기 안내 (구글 시트 + Apps Script) */
+  function setupView() {
+    var step = function (n, title, body) { return '<div class="setup-step"><span class="setup-no">' + n + '</span><div><h3>' + title + '</h3>' + body + '</div></div>'; };
+    return '<section class="hero" style="min-height:0"><div class="hero-copy"><span class="eyebrow">For Teachers</span>' +
+      '<h1><span class="en gold-text">GONGGI LEGENDS</span>우리 반 공기 리그 만들기</h1>' +
+      '<p>선생님 구글 시트 하나가 우리 반 서버가 돼요. 명단과 기록은 선생님 드라이브에만 저장되고, 아이들은 각자 크롬북으로 접속해요. 10분이면 끝나요.</p>' +
+      '<div class="hero-actions"><a class="btn btn-ghost" href="?demo">먼저 체험해 보기</a></div></div></section>' +
+      '<section class="panel gilded section setup">' +
+      step(1, '새 구글 시트 만들기', '<p>학생 개인 계정이 아닌 <b>선생님 계정</b>으로 <a class="link" href="https://sheets.new" target="_blank" rel="noopener">sheets.new</a> 를 열어 빈 시트를 만들고, 이름을 "공기 리그"처럼 바꿔 주세요.</p>') +
+      step(2, '코드 붙여넣기', '<p>시트 메뉴 <b>확장 프로그램 → Apps Script</b>. 원래 있던 코드를 모두 지우고 아래 코드를 붙여넣은 뒤 💾 저장.</p>' +
+        '<textarea class="input code" id="gs-code" readonly aria-label="Apps Script 코드">코드를 불러오는 중…</textarea><div class="row-actions" style="justify-content:flex-start"><button class="btn btn-gold" type="button" data-act="copy-code">코드 복사</button></div>') +
+      step(3, '웹 앱으로 배포', '<p>오른쪽 위 <b>배포 → 새 배포</b> → 톱니바퀴에서 <b>웹 앱</b> 선택<br>· 다음 사용자 인증 정보로 실행: <b>나</b><br>· 액세스 권한이 있는 사용자: <b>모든 사용자</b><br>→ 배포 → 권한 승인(“확인되지 않은 앱” 화면이 나오면 고급 → 이동) → <b>웹 앱 URL 복사</b></p>' +
+        '<p class="muted" style="font-size:13px">학교 계정에서 "모든 사용자"가 안 보이면 학교 관리자가 막아 둔 거예요. 개인 구글 계정으로 1단계부터 해 주세요.</p>') +
+      step(4, '연결하고 반 만들기', '<div class="form-row"><label for="sheet-url">웹 앱 URL</label><input class="input" id="sheet-url" placeholder="https://script.google.com/macros/s/…/exec"></div>' +
+        '<div class="form-error" id="sheet-err"></div><div class="row-actions" style="justify-content:flex-start"><button class="btn btn-play" type="button" data-act="connect-sheet">연결하기</button></div>') +
+      '</section>';
+  }
+  var scriptCode = null;
+  function loadScriptCode() {
+    var box = document.getElementById('gs-code');
+    if (!box) return;
+    if (scriptCode) { box.value = scriptCode; return; }
+    fetch('apps-script/Code.gs').then(function (r) { if (!r.ok) throw new Error(); return r.text(); }).then(function (t) {
+      scriptCode = t; var b = document.getElementById('gs-code'); if (b) b.value = t;
+    }).catch(function () { var b = document.getElementById('gs-code'); if (b) b.value = '코드를 불러오지 못했어요. GitHub 저장소의 apps-script/Code.gs 파일 내용을 복사해 주세요.'; });
+  }
+  /* 연결은 됐는데 아직 반이 없을 때 */
+  function initView() {
+    return '<div class="page-head"><div><span class="eyebrow">New League</span><h1>우리 반 만들기</h1><p>시트 연결 성공! 반 이름, 선생님 비밀번호, 학생 명단만 넣으면 끝이에요.</p></div></div>' +
+      '<section class="panel gilded section" style="max-width:640px">' +
+      '<div class="form-row"><label for="init-league">반 이름</label><input class="input" id="init-league" placeholder="예: 3학년 2반 공기 리그"></div>' +
+      '<div class="form-row"><label for="init-pw">선생님 비밀번호 (4자 이상, 학생에게 알려 주지 마세요)</label><input class="input" id="init-pw" type="password"></div>' +
+      '<div class="form-row"><label for="init-pw2">선생님 비밀번호 한 번 더</label><input class="input" id="init-pw2" type="password"></div>' +
+      '<div class="form-row"><label for="init-students">학생 명단 (한 줄에 한 명, 순서가 번호)</label><textarea class="input" id="init-students" style="min-height:200px" placeholder="김하늘&#10;이도윤&#10;박서연"></textarea></div>' +
+      '<div class="form-error" id="init-err"></div><div class="row-actions"><button class="btn btn-play" type="button" data-act="init-class">반 만들기</button></div></section>';
   }
 
   var VIEWS = {};
@@ -505,16 +570,16 @@
       return '<div class="page-head"><div><span class="eyebrow">Teacher Console</span><h1>선생님 메뉴</h1><p>LP 규칙, 쉬는 학생, 새 시즌을 관리해요.</p></div></div>' +
         '<section class="panel gilded pin-wrap" style="max-width:420px;margin:0 auto;width:100%"><h2>선생님 비밀번호</h2>' +
         (LIVE && !TEACHER_PW ? '<p class="form-error">js/config.js에 선생님 비밀번호(TEACHER_PASSWORD)를 넣어 주세요.</p>' : '') +
-        '<input class="pin-input" id="teacher-pin" type="password" inputmode="numeric" maxlength="8" autocomplete="off" aria-label="선생님 비밀번호">' +
+        '<input class="pin-input" id="teacher-pin" type="password" maxlength="20" autocomplete="off" aria-label="선생님 비밀번호">' +
         '<div class="form-error" id="teacher-err"></div><button class="btn btn-gold" type="button" data-act="teacher-login">열기</button></section>';
     }
     var s = settings();
     var list = players().slice().sort(function (a, b) { return a.no - b.no; });
     return '<div class="page-head"><div><span class="eyebrow">Teacher Console</span><h1>선생님 메뉴</h1><p>' +
-      (LIVE ? '해바라기 체크리스트와 연결됨 · 학생 ' + ROSTER.length + '명 · 비밀번호 공유' : '체험 모드 · 이 브라우저에만 저장돼요') + '</p></div>' +
+      (LIVE ? '해바라기 체크리스트와 연결됨 · 학생 ' + ROSTER.length + '명 · 비밀번호 공유' : SHEET ? '구글 시트와 연결됨 · 학생 ' + ROSTER.length + '명 · 기록은 선생님 시트에 저장돼요' : '체험 모드 · 이 브라우저에만 저장돼요') + '</p></div>' +
       '<button class="btn btn-ghost" type="button" data-act="teacher-logout">잠그기</button></div>' +
       '<div class="grid-2"><section class="panel section"><h2>선수 명단</h2><p class="muted" style="margin:0;font-size:14px">' +
-      (LIVE ? '명단은 체크리스트와 같아요. 바꾸려면 js/config.js의 STUDENTS를 고쳐 주세요.' : '체험용 예시 명단이에요.') + ' <b>추천에 자주</b>를 켠 친구는 다른 아이들 추천 상대에 더 자주 나와요(아이들 화면에는 표시되지 않아요). 결석한 친구는 쉬는 중으로 두면 추천과 대진표에서 빠져요.</p>' +
+      (LIVE ? '명단은 체크리스트와 같아요. 바꾸려면 js/config.js의 STUDENTS를 고쳐 주세요.' : SHEET ? '아래 \'학생 명단 고치기\'에서 바꿀 수 있어요.' : '체험용 예시 명단이에요.') + ' <b>추천에 자주</b>를 켠 친구는 다른 아이들 추천 상대에 더 자주 나와요(아이들 화면에는 표시되지 않아요). 결석한 친구는 쉬는 중으로 두면 추천과 대진표에서 빠져요.</p>' +
       '<div class="feed">' + list.map(function (p) {
         var r = GG.getRank(p.points);
         return '<div class="feed-row">' + headshot(p, 34) + '<div class="feed-text"><b>' + p.no + '. ' + esc(p.name) + '</b><div class="feed-time">' + r.label + ' · ' + p.points + ' LP · ' + p.wins + '승 ' + p.losses + '패</div></div>' +
@@ -530,8 +595,15 @@
       '<label class="check"><input type="checkbox" id="set-streak"' + (s.streakBonus ? ' checked' : '') + '> 연승 보너스</label>' +
       '<div class="row-actions"><button class="btn btn-gold" type="button" data-act="save-settings">규칙 저장</button></div>' +
       '</section>' +
+      (SHEET ? '<section class="panel section"><h2>학생 명단 고치기</h2><p class="muted" style="margin:0;font-size:14px">한 줄에 한 명. 순서가 출석번호가 돼요. 이름을 바꾸면 그 학생의 지난 기록은 새 이름과 이어지지 않으니 주의해 주세요.</p>' +
+        '<div class="form-row"><label for="roster-league">반 이름</label><input class="input" id="roster-league" value="' + esc(LEAGUE) + '"></div>' +
+        '<textarea class="input" id="roster-text" style="min-height:160px" aria-label="학생 명단">' + esc(ROSTER.map(function (st) { return st.name; }).join('\n')) + '</textarea>' +
+        '<div class="row-actions"><button class="btn btn-gold" type="button" data-act="save-roster">명단 저장</button></div>' +
+        '<h3>학생 비밀번호 초기화</h3><p class="muted" style="margin:0;font-size:13px">비밀번호를 잊은 학생을 고르면, 다음 로그인 때 새로 만들어요.</p>' +
+        '<div class="row-actions" style="justify-content:flex-start"><select class="input" id="pin-reset-who" style="width:auto">' + ROSTER.map(function (st) { return '<option>' + esc(st.name) + '</option>'; }).join('') + '</select>' +
+        '<button class="btn btn-danger" type="button" data-act="reset-pin">초기화</button></div></section>' : '') +
       '<section class="panel gilded section"><h2>링크 나눠주기</h2><p class="muted" style="margin:0;font-size:14px">아이들이 크롬북으로 이 주소에 들어오면 돼요. 클래스룸에 올리거나 QR 코드를 화면에 띄워 주세요.</p>' +
-      '<input class="input" id="share-url" readonly value="' + esc(location.origin + location.pathname) + '" aria-label="앱 주소">' +
+      '<input class="input" id="share-url" readonly value="' + esc(CLASS_LINK) + '" aria-label="앱 주소">' +
       '<div class="row-actions" style="justify-content:flex-start"><button class="btn" type="button" data-act="copy-url">주소 복사</button><button class="btn" type="button" data-act="show-qr">QR 코드 크게 보기</button></div></section>' +
       '<section class="panel section"><h2>백업</h2><p class="muted" style="margin:0;font-size:14px">지금 점수와 기록을 글자로 복사해 보관해요.</p>' +
       '<div class="row-actions" style="justify-content:flex-start"><button class="btn" type="button" data-act="copy-backup">백업 코드 복사</button></div>' +
@@ -630,22 +702,26 @@
 
   /* 본인 확인: 학생 비밀번호(체크리스트와 같음) 또는 선생님 비밀번호 */
   function verifyStudent(id, title, desc, onOk) {
-    store.getPin(id).then(function (pin) {
-      if (!pin) return setupPin(id, onOk);
+    store.hasPin(id).then(function (has) {
+      if (!has) return setupPin(id, onOk);
       openLayer('<div class="modal modal-sm pin-wrap" role="dialog" aria-modal="true" aria-label="' + esc(title) + '">' +
         '<span class="eyebrow">Confirm</span><h2>' + esc(title) + '</h2><p class="muted" style="margin:0">' + desc + '</p>' +
-        '<input class="pin-input" id="pin-in" type="password" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="비밀번호 4자리">' +
+        '<input class="pin-input" id="pin-in" type="password" inputmode="numeric" maxlength="8" autocomplete="off" aria-label="비밀번호 4자리">' +
         '<div class="form-error" id="pin-err"></div><div class="row-actions" style="justify-content:center"><button class="btn btn-ghost" type="button" data-act="close">취소</button>' +
         '<button class="btn btn-gold" type="button" id="pin-ok">확인</button></div></div>');
-      var input = document.getElementById('pin-in');
+      var input = document.getElementById('pin-in'), btn = document.getElementById('pin-ok');
       input.focus();
       function check() {
         var v = input.value;
-        if (v === pin || (TEACHER_PW && v === TEACHER_PW)) { closeLayer(); onOk(); return; }
-        document.getElementById('pin-err').textContent = '비밀번호가 맞지 않아요.';
-        input.value = ''; input.classList.remove('shake'); void input.offsetWidth; input.classList.add('shake'); input.focus();
+        btn.disabled = true;
+        store.checkPin(id, v).then(function (ok) {
+          btn.disabled = false;
+          if (ok) { closeLayer(); onOk(); return; }
+          document.getElementById('pin-err').textContent = '비밀번호가 맞지 않아요.';
+          input.value = ''; input.classList.remove('shake'); void input.offsetWidth; input.classList.add('shake'); input.focus();
+        }, function (e) { btn.disabled = false; fail(e); });
       }
-      document.getElementById('pin-ok').onclick = check;
+      btn.onclick = check;
       input.onkeydown = function (e) { if (e.key === 'Enter') check(); };
     }, function () { toast('비밀번호를 확인하지 못했어요. 인터넷 연결을 확인해 주세요.', true); });
   }
@@ -664,16 +740,21 @@
       store.setPin(id, a).then(function () { closeLayer(); toast('비밀번호를 만들었어요'); onOk(); }, function () { err.textContent = '저장하지 못했어요. 다시 해 주세요.'; });
     };
   }
+  function teacherLogin(pw) {
+    return store.checkTeacher(pw).then(function (ok) { if (ok) ui.teacher = true; return ok; });
+  }
   function verifyTeacher(onOk) {
     if (ui.teacher) return onOk();
     openLayer('<div class="modal modal-sm pin-wrap" role="dialog" aria-modal="true" aria-label="선생님 확인"><span class="eyebrow">Teacher</span><h2>선생님 확인</h2>' +
-      '<input class="pin-input" id="pin-in" type="password" inputmode="numeric" maxlength="8" autocomplete="off" aria-label="선생님 비밀번호">' +
+      '<input class="pin-input" id="pin-in" type="password" maxlength="20" autocomplete="off" aria-label="선생님 비밀번호">' +
       '<div class="form-error" id="pin-err"></div><div class="row-actions" style="justify-content:center"><button class="btn btn-ghost" type="button" data-act="close">취소</button><button class="btn btn-gold" type="button" id="pin-ok">확인</button></div></div>');
     var input = document.getElementById('pin-in');
     input.focus();
     function check() {
-      if (TEACHER_PW && input.value === TEACHER_PW) { ui.teacher = true; closeLayer(); onOk(); }
-      else { document.getElementById('pin-err').textContent = '비밀번호가 맞지 않아요.'; input.value = ''; }
+      teacherLogin(input.value).then(function (ok) {
+        if (ok) { closeLayer(); onOk(); }
+        else { document.getElementById('pin-err').textContent = '비밀번호가 맞지 않아요.'; input.value = ''; }
+      }, fail);
     }
     document.getElementById('pin-ok').onclick = check;
     input.onkeydown = function (e) { if (e.key === 'Enter') check(); };
@@ -856,13 +937,49 @@
         });
         break;
       case 'login': openPicker('login'); break;
+      case 'save-roster':
+        var names = document.getElementById('roster-text').value.split(/\n|,/).map(function (x) { return x.trim(); }).filter(Boolean);
+        store.setRoster(names, document.getElementById('roster-league').value.trim()).then(function () { toast('명단을 저장했어요'); }, fail);
+        break;
+      case 'reset-pin':
+        var rw = document.getElementById('pin-reset-who').value;
+        ask(rw + '의 비밀번호를 초기화할까요?', '다음에 로그인할 때 새 비밀번호를 만들어요.', '초기화', function () {
+          store.resetPin(rw).then(function () { toast(rw + ' 비밀번호를 초기화했어요'); }, fail);
+        });
+        break;
+      case 'connect-sheet':
+        var cu = sheetUrlFrom(document.getElementById('sheet-url').value), cerr = document.getElementById('sheet-err');
+        if (!cu) { cerr.textContent = '웹 앱 URL이 아니에요. https://script.google.com/macros/s/…/exec 모양의 주소를 붙여넣어 주세요.'; break; }
+        cerr.textContent = '연결 확인 중…';
+        fetch(cu + '?action=v&_=' + Date.now()).then(function (r) { return r.json(); }).then(function (r) {
+          if (!r.ok) throw new Error(r.error);
+          location.href = location.pathname + '?sheet=' + sheetIdOf(cu);
+        }).catch(function () {
+          cerr.textContent = '연결하지 못했어요. 배포할 때 "액세스 권한: 모든 사용자"로 했는지, 주소 끝이 /exec 인지 확인해 주세요.';
+        });
+        break;
+      case 'copy-code':
+        var code2 = document.getElementById('gs-code');
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(code2.value).then(function () { toast('코드를 복사했어요'); }, function () { code2.select(); });
+        else code2.select();
+        break;
+      case 'init-class':
+        var ilist = document.getElementById('init-students').value.split(/\n|,/).map(function (x) { return x.trim(); }).filter(Boolean);
+        var ipw = document.getElementById('init-pw').value, ierr = document.getElementById('init-err');
+        if (ilist.length < 2) { ierr.textContent = '학생을 2명 이상 넣어 주세요.'; break; }
+        if (ipw.length < 4) { ierr.textContent = '선생님 비밀번호는 4자 이상이어야 해요.'; break; }
+        if (ipw !== document.getElementById('init-pw2').value) { ierr.textContent = '두 번 넣은 비밀번호가 달라요.'; break; }
+        ierr.textContent = '만드는 중…';
+        store.init({ league: document.getElementById('init-league').value.trim() || '우리 반 리그', teacherPw: ipw, students: ilist })
+          .then(function () { store.teacherPw = ipw; ui.teacher = true; location.hash = '#settings'; toast('반을 만들었어요! 아래 링크를 아이들에게 나눠 주세요'); }, function (e) { ierr.textContent = (e && e.message) || '만들지 못했어요.'; });
+        break;
       case 'copy-url':
         var u = document.getElementById('share-url');
         if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(u.value).then(function () { toast('주소를 복사했어요'); }, function () { u.select(); });
         else u.select();
         break;
       case 'show-qr':
-        var url = location.origin + location.pathname;
+        var url = CLASS_LINK;
         openLayer('<div class="modal pin-wrap" role="dialog" aria-modal="true" aria-label="QR 코드"><span class="eyebrow">Join the League</span><h2>크롬북 카메라로 찍어요</h2>' +
           '<div id="qr" style="background:#fff;padding:16px"></div><div class="num" style="font-size:18px;word-break:break-all">' + esc(url) + '</div><button class="btn btn-gold" type="button" data-act="close">닫기</button></div>');
         var draw = function () { try { new window.QRCode(document.getElementById('qr'), { text: url, width: 320, height: 320 }); } catch (e) { document.getElementById('qr').textContent = 'QR 코드를 만들지 못했어요. 주소를 복사해 주세요.'; } };
@@ -951,11 +1068,11 @@
         });
         break;
       case 'teacher-login':
-        var v = document.getElementById('teacher-pin').value;
-        if (TEACHER_PW && v === TEACHER_PW) { ui.teacher = true; render(); }
-        else document.getElementById('teacher-err').textContent = '비밀번호가 맞지 않아요.';
+        teacherLogin(document.getElementById('teacher-pin').value).then(function (ok) {
+          if (ok) render(); else document.getElementById('teacher-err').textContent = '비밀번호가 맞지 않아요.';
+        }, fail);
         break;
-      case 'teacher-logout': ui.teacher = false; render(); break;
+      case 'teacher-logout': ui.teacher = false; if (SHEET) store.teacherPw = ''; render(); break;
       case 'save-settings':
         store.saveSettings(Object.assign({}, settings(), {
           baseLP: Math.max(10, Math.min(60, parseInt(document.getElementById('set-base').value, 10) || 25)),
@@ -1004,11 +1121,11 @@
   /* 위쪽 바 */
   document.getElementById('logo-slot').innerHTML = logoMark();
   var modeChip = document.getElementById('mode-chip');
-  modeChip.className = 'mode-chip ' + (LIVE ? 'live' : OFFLINE ? '' : 'demo');
-  modeChip.innerHTML = '<i></i><span>' + (LIVE ? '체크리스트 연결됨' : OFFLINE ? '연결 안 됨' : '체험 모드') + '</span>';
+  modeChip.className = 'mode-chip ' + (REAL ? 'live' : OFFLINE || SETUP ? '' : 'demo');
+  modeChip.innerHTML = '<i></i><span>' + (LIVE ? '체크리스트 연결됨' : SHEET ? '시트 연결됨' : OFFLINE ? '연결 안 됨' : SETUP ? '새 반 만들기' : '체험 모드') + '</span>';
   var meSlot = document.getElementById('me-slot');
   function drawMe() {
-    if (OFFLINE || !meSlot) return;
+    if (OFFLINE || SETUP || !meSlot) return;
     var p = me && data ? byId(me) : null;
     meSlot.innerHTML = me
       ? '<button class="me-chip" type="button" data-act="me-menu">' + (p ? headshot(p, 30) : '') + '<span>' + esc(me) + '</span></button>'
@@ -1026,7 +1143,7 @@
   window.addEventListener('hashchange', function () { closeLayer(); render(); window.scrollTo(0, 0); });
 
   render();
-  if (OFFLINE) return;
+  if (OFFLINE || SETUP) return;
   /* 내 대결이 다른 크롬북에서 확정되면 내 화면에도 결과를 띄운다 */
   store.subscribe(function (d) {
     var fresh = [];
@@ -1036,10 +1153,15 @@
     });
     firstLoad = false;
     data = d;
+    if (SHEET) {
+      ROSTER = d.roster || [];
+      LEAGUE = d.league || LEAGUE; SEASON = d.season || SEASON;
+      if (me && !ROSTER.some(function (st) { return st.name === me; })) { me = null; }
+    }
     calc = GG.replay(ROSTER.map(function (st) { return st.name; }), d.matches, d.settings);
     render();
     fresh = fresh.filter(function (m) { return !wantResult[m.id]; }).map(function (m) { return matchById(m.id); }).filter(Boolean);
     if (!showWanted() && fresh.length && !layer.querySelector('.result')) showResult(fresh[fresh.length - 1]);
   },
-    function () { toast('리그 정보를 불러오지 못했어요. Firestore 규칙에서 gonggi_ 컬렉션을 허용했는지 확인해 주세요.', true); });
+    function () { toast(SHEET ? '선생님 시트에 연결하지 못했어요. 링크가 맞는지, 인터넷이 되는지 확인해 주세요.' : '리그 정보를 불러오지 못했어요. Firestore 규칙에서 gonggi_ 컬렉션을 허용했는지 확인해 주세요.', true); });
 })();

@@ -2,13 +2,14 @@
  * 경기 기록(gonggi_matches: 승자 a, 패자 b, 시각 t)이 원본이고, 점수·티어는 화면에서 GG.replay 로 다시 계산한다.
  * 그래서 선생님이 기록을 고치거나 지워도 모든 점수가 저절로 맞춰진다.
  * 실전 모드: 체크리스트와 같은 Firebase(Firestore), 비밀번호는 studentPins 공유
+ * 시트 모드: 각 선생님의 구글 시트 + Apps Script 웹 앱 (apps-script/Code.gs)
  * 체험 모드: 이 브라우저(localStorage)
  *
  *   subscribe(cb)                       cb({ players: {이름: 꾸미기·쉬는중}, matches: [{id,a,b,t}], settings, reports })
  *   record(winnerId, loserId, opts)     opts.consume: 확인한 결과 신고 id, opts.cleanup: 같이 지울 신고 id들, opts.by: 기록한 사람
  *   updateMatch(id, fields) / deleteMatch(id)
  *   addReport(winnerId, loserId) / removeReport(id)
- *   updatePlayer(id, fields), getPin(id) / setPin(id, pin), saveSettings(s), resetSeason()
+ *   updatePlayer(id, fields), hasPin(id) / checkPin(id, pin) / setPin(id, pin), checkTeacher(pw), saveSettings(s), resetSeason()
  */
 (function (root) {
   'use strict';
@@ -108,6 +109,84 @@
     return Promise.all([wipe('gonggi_matches'), wipe('gonggi_reports')]);
   };
 
+  FirebaseStore.prototype.hasPin = function (id) { return this.getPin(id).then(function (p) { return !!p; }); };
+  FirebaseStore.prototype.checkPin = function (id, pin) {
+    var tp = this.teacherPw;
+    return this.getPin(id).then(function (p) { return (!!p && pin === p) || (!!tp && pin === tp); });
+  };
+  FirebaseStore.prototype.checkTeacher = function (pw) { return Promise.resolve(!!this.teacherPw && pw === this.teacherPw); };
+
+  /* ───────── 시트: 선생님 구글 시트의 Apps Script 웹 앱 ───────── */
+  function SheetStore(url) {
+    this.url = url;
+    this.mode = 'sheet';
+    this.v = null;
+    this.state = null;
+    this.teacherPw = '';
+    this.cb = null;
+  }
+  SheetStore.prototype._get = function (action) {
+    return fetch(this.url + (this.url.indexOf('?') === -1 ? '?' : '&') + 'action=' + action + '&_=' + Date.now())
+      .then(function (r) { return r.json(); })
+      .then(function (r) { if (!r.ok) throw new Error(r.error || '시트에서 읽지 못했어요.'); return r; });
+  };
+  SheetStore.prototype._post = function (body) {
+    var self = this;
+    if (this.teacherPw) body.teacherPw = this.teacherPw;
+    // text/plain 으로 보내야 Apps Script 가 추가 확인(preflight) 없이 받는다
+    return fetch(this.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json(); })
+      .then(function (r) { if (!r.ok) throw new Error(r.error || '저장하지 못했어요.'); return r; })
+      .then(function (r) { self.load(); return r; });
+  };
+  SheetStore.prototype.load = function () {
+    var self = this;
+    return this._get('state').then(function (st) {
+      self.v = st.v; self.state = st;
+      st.settings = Object.assign({}, GG.DEFAULT_SETTINGS, st.settings || {});
+      if (self.cb) self.cb(st);
+      return st;
+    });
+  };
+  /* 실시간 알림이 없어서 몇 초마다 '바뀐 게 있나'만 가볍게 묻는다 (화면이 보일 때만) */
+  SheetStore.prototype.subscribe = function (cb, onError) {
+    var self = this;
+    this.cb = cb;
+    this.load().catch(onError || function () {});
+    setInterval(function () {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      self._get('v').then(function (r) { if (r.v !== self.v) self.load(); }).catch(function () {});
+    }, 5000);
+  };
+  SheetStore.prototype.init = function (o) { return this._post({ action: 'init', league: o.league, teacherPw: o.teacherPw, students: o.students }); };
+  SheetStore.prototype.record = function (w, l, opts) {
+    opts = opts || {};
+    return this._post({ action: 'record', w: w, l: l, consume: opts.consume, cleanup: opts.cleanup, by: opts.by }).then(function (r) { return r.match; });
+  };
+  SheetStore.prototype.updateMatch = function (id, fields) { return this._post({ action: 'updateMatch', id: id, fields: fields }); };
+  SheetStore.prototype.deleteMatch = function (id) { return this._post({ action: 'deleteMatch', id: id }); };
+  SheetStore.prototype.addReport = function (w, l) { return this._post({ action: 'addReport', w: w, l: l }); };
+  SheetStore.prototype.removeReport = function (id) { return this._post({ action: 'removeReport', id: id }); };
+  SheetStore.prototype.updatePlayer = function (id, fields) { return this._post({ action: 'updatePlayer', id: id, fields: fields }); };
+  SheetStore.prototype.hasPin = function (id) {
+    return (this.state ? Promise.resolve(this.state) : this.load()).then(function (st) { return (st.pinSet || []).indexOf(id) !== -1; });
+  };
+  SheetStore.prototype.checkPin = function (id, pin) {
+    var tp = this.teacherPw;
+    return this._post({ action: 'checkPin', id: id, pin: pin }).then(function (r) { return r.match || (!!tp && pin === tp); });
+  };
+  SheetStore.prototype.setPin = function (id, pin) { return this._post({ action: 'setPin', id: id, pin: pin }); };
+  SheetStore.prototype.checkTeacher = function (pw) {
+    var self = this;
+    var saved = this.teacherPw;
+    this.teacherPw = pw;
+    return this._post({ action: 'checkTeacher' }).then(function () { return true; }, function () { self.teacherPw = saved; return false; });
+  };
+  SheetStore.prototype.saveSettings = function (st) { return this._post({ action: 'saveSettings', settings: st }); };
+  SheetStore.prototype.setRoster = function (names, league) { return this._post({ action: 'setRoster', students: names, league: league }); };
+  SheetStore.prototype.resetPin = function (id) { return this._post({ action: 'resetPin', id: id }); };
+  SheetStore.prototype.resetSeason = function () { return this._post({ action: 'resetSeason' }); };
+
   /* ───────── 체험: 이 브라우저에만 ───────── */
   var LOCAL_KEY = 'gonggi-legends-demo-v3';
   function LocalStore(seed) {
@@ -162,9 +241,12 @@
   LocalStore.prototype.setPin = function (id, pin) { this.data.pins[id] = pin; this._save(); return Promise.resolve(); };
   LocalStore.prototype.saveSettings = function (s) { this.data.settings = s; this._save(); return Promise.resolve(); };
   LocalStore.prototype.resetSeason = function () { this.data.matches = []; this.data.reports = {}; this._save(); return Promise.resolve(); };
+  LocalStore.prototype.hasPin = function (id) { return Promise.resolve(!!this.data.pins[id]); };
+  LocalStore.prototype.checkPin = function (id, pin) { return Promise.resolve((!!this.data.pins[id] && this.data.pins[id] === pin) || pin === this.teacherPw); };
+  LocalStore.prototype.checkTeacher = function (pw) { return Promise.resolve(pw === this.teacherPw); };
   LocalStore.reset = function () { try { localStorage.removeItem(LOCAL_KEY); } catch (e) { /* 무시 */ } };
 
-  var api = { FirebaseStore: FirebaseStore, LocalStore: LocalStore };
+  var api = { FirebaseStore: FirebaseStore, SheetStore: SheetStore, LocalStore: LocalStore };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.GGStore = api;
 })(typeof window !== 'undefined' ? window : globalThis);
