@@ -20,11 +20,16 @@
   var ROMAN = ['IV', 'III', 'II', 'I'];
 
   var DEFAULT_SETTINGS = {
-    startPoints: 0,   // 처음 등록할 때 점수
-    winBase: 25,      // 실력이 같은 친구를 이겼을 때 얻는 점수
-    lossBase: 15,     // 실력이 같은 친구에게 졌을 때 잃는 점수
-    streakBonus: true // 3연승부터 보너스
+    startPoints: 0,    // 시즌 시작 점수
+    baseLP: 25,        // 골드에서 비슷한 친구를 이겼을 때 얻는 LP (모든 티어의 기준)
+    streakBonus: true, // 3연승부터 보너스
+    lossShield: true   // 3연패부터 잃는 LP 절반
   };
+  /* 피라미드: 낮은 티어는 많이 얻고 적게 잃고, 높은 티어는 적게 얻고 많이 잃는다.
+     비슷한 실력끼리 반반 이기면 골드 근처에서 멈추고, 그 위는 확실히 잘해야 올라간다. */
+  var WIN_MUL  = [1.6, 1.4, 1.2, 1.0, 0.85, 0.7, 0.6, 0.5, 0.45, 0.4];
+  var LOSS_MUL = [0.5, 0.7, 0.85, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6];
+  function streakBonusFor(newStreak) { return newStreak >= 5 ? 8 : newStreak === 4 ? 5 : newStreak === 3 ? 3 : 0; }
 
   function tierIndexOf(points) {
     for (var i = TIERS.length - 1; i >= 0; i--) {
@@ -62,35 +67,31 @@
     return 1 / (1 + Math.pow(10, (oppPoints - myPoints) / 400));
   }
 
-  /* 대결 결과 미리 계산. winner의 streak은 이기기 전 연승 수 */
-  function calcMatch(winnerPoints, loserPoints, winnerStreak, settings) {
+  /* 대결 결과 계산. winnerStreak = 이기기 전 연승 수, loserStreak = 지기 전 연패 수(양수) */
+  function calcMatch(winnerPoints, loserPoints, winnerStreak, settings, loserStreak) {
     var s = Object.assign({}, DEFAULT_SETTINGS, settings || {});
-    var eWin = expectedScore(winnerPoints, loserPoints); // 이긴 사람이 이길 거라고 예상된 정도
-    var eLose = 1 - eWin;                                  // 진 사람이 이길 거라고 예상된 정도
+    var base = s.baseLP || s.winBase || 25;
+    var eWin = expectedScore(winnerPoints, loserPoints);
+    var wt = tierIndexOf(winnerPoints), lt = tierIndexOf(loserPoints);
 
-    // 낮은 티어가 높은 티어를 이기면 크게, 높은 티어가 낮은 티어를 이기면 조금.
-    var gain = Math.round(s.winBase * 2 * (1 - eWin));
-    gain = Math.max(5, Math.min(s.winBase * 2, gain));
+    // 티어 차이: 낮은 쪽이 이기면 크게, 높은 쪽이 이기면 조금 (엘로)
+    var maxGain = Math.round(base * WIN_MUL[wt] * 2);
+    var gain = Math.max(3, Math.min(maxGain, Math.round(base * WIN_MUL[wt] * 2 * (1 - eWin))));
+    var maxLoss = Math.round(base * LOSS_MUL[lt] * 2);
+    var loss = Math.max(2, Math.min(maxLoss, Math.round(base * LOSS_MUL[lt] * 2 * (1 - eWin))));
+    var shield = !!(s.lossShield && (loserStreak || 0) >= 2); // 이번에 지면 3연패
+    if (shield) loss = Math.ceil(loss / 2);
+    loss = Math.min(loss, loserPoints); // 0 아래로는 안 내려감
 
-    // 높은 티어가 지면 많이, 낮은 티어가 지면 조금 잃는다.
-    var loss = Math.round(s.lossBase * 2 * eLose);
-    loss = Math.max(3, Math.min(s.lossBase * 2, loss));
-    loss = Math.min(loss, loserPoints); // 0점 아래로는 내려가지 않음
-
-    var bonus = 0;
-    if (s.streakBonus) {
-      var newStreak = (winnerStreak || 0) + 1;
-      if (newStreak >= 3) bonus = Math.min(10, (newStreak - 2) * 2);
-    }
+    var bonus = s.streakBonus ? streakBonusFor((winnerStreak || 0) + 1) : 0;
     var upset = getRank(loserPoints).value - getRank(winnerPoints).value >= 4; // 한 티어 이상 위를 이김
-
-    return { gain: gain, bonus: bonus, total: gain + bonus, loss: loss, upset: upset, winChance: eWin };
+    return { gain: gain, bonus: bonus, total: gain + bonus, loss: loss, shield: shield, upset: upset, winChance: eWin };
   }
 
   /* 두 사람이 붙었을 때 각자 이기면/지면 얼마인지 */
   function preview(a, b, settings) {
-    var aWins = calcMatch(a.points, b.points, a.streak > 0 ? a.streak : 0, settings);
-    var bWins = calcMatch(b.points, a.points, b.streak > 0 ? b.streak : 0, settings);
+    var aWins = calcMatch(a.points, b.points, a.streak > 0 ? a.streak : 0, settings, b.streak < 0 ? -b.streak : 0);
+    var bWins = calcMatch(b.points, a.points, b.streak > 0 ? b.streak : 0, settings, a.streak < 0 ? -a.streak : 0);
     return {
       a: { win: aWins.total, lose: bWins.loss, chance: aWins.winChance },
       b: { win: bWins.total, lose: aWins.loss, chance: bWins.winChance }
@@ -180,7 +181,7 @@
 
   /* 승패 결과를 학생 객체에 반영 (새 객체 반환) */
   function applyResult(winner, loser, settings) {
-    var r = calcMatch(winner.points, loser.points, winner.streak > 0 ? winner.streak : 0, settings);
+    var r = calcMatch(winner.points, loser.points, winner.streak > 0 ? winner.streak : 0, settings, loser.streak < 0 ? -loser.streak : 0);
     var w = Object.assign({}, winner);
     var l = Object.assign({}, loser);
     w.points += r.total;
@@ -194,10 +195,36 @@
     return { winner: w, loser: l, result: r };
   }
 
+  /* 경기 기록(원본)을 시간 순서대로 다시 계산해 모든 선수 점수와 경기별 결과를 만든다.
+     기록을 고치거나 지워도 이것만 다시 돌리면 된다. */
+  function replay(ids, matches, settings) {
+    var s = Object.assign({}, DEFAULT_SETTINGS, settings || {});
+    var P = {};
+    function get(id) {
+      if (!P[id]) P[id] = { id: id, points: s.startPoints, wins: 0, losses: 0, streak: 0, bestStreak: 0, peak: s.startPoints };
+      return P[id];
+    }
+    (ids || []).forEach(get);
+    var list = (matches || []).slice().sort(function (x, y) { return x.t - y.t || (x.id < y.id ? -1 : 1); });
+    var results = list.map(function (m) {
+      var w = get(m.a), l = get(m.b);
+      var out = applyResult(w, l, s);
+      var res = {
+        id: m.id, a: m.a, b: m.b, t: m.t, by: m.by, edited: m.edited,
+        gain: out.result.total, bonus: out.result.bonus, loss: out.result.loss, shield: out.result.shield, upset: out.result.upset,
+        before: { a: { points: w.points, streak: w.streak }, b: { points: l.points, streak: l.streak } },
+        after: { a: out.winner.points, b: out.loser.points }
+      };
+      Object.assign(w, out.winner); Object.assign(l, out.loser);
+      return res;
+    });
+    return { players: P, matches: results };
+  }
+
   var api = {
     TIERS: TIERS, DIV_SIZE: DIV_SIZE, ROMAN: ROMAN, DEFAULT_SETTINGS: DEFAULT_SETTINGS,
     getRank: getRank, expectedScore: expectedScore, calcMatch: calcMatch, preview: preview,
-    recommend: recommend, autoPair: autoPair, applyResult: applyResult,
+    recommend: recommend, autoPair: autoPair, applyResult: applyResult, replay: replay, WIN_MUL: WIN_MUL, LOSS_MUL: LOSS_MUL,
     lastMetAgo: lastMetAgo, timesMet: timesMet
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

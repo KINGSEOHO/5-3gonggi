@@ -14,20 +14,19 @@ test('티어/단계 계산', () => {
   assert.strictEqual(GG.getRank(-10).points, 0);
 });
 
-test('비슷한 실력이면 이기면 +25, 지면 -15', () => {
-  const r = GG.calcMatch(500, 500, 0);
-  assert.strictEqual(r.gain, 25);
-  assert.strictEqual(r.loss, 15);
+test('피라미드: 낮은 티어는 많이 얻고 적게 잃고, 높은 티어는 반대', () => {
+  const iron = GG.calcMatch(20, 20, 0), gold = GG.calcMatch(620, 620, 0), dia = GG.calcMatch(1220, 1220, 0);
+  assert.ok(iron.gain > iron.loss);
+  assert.strictEqual(gold.gain, 25); assert.strictEqual(gold.loss, 25);
+  assert.ok(dia.gain < dia.loss);
+  assert.ok(iron.gain > gold.gain && gold.gain > dia.gain);
 });
 
-test('낮은 티어가 높은 티어를 이기면 더 많이 얻는다', () => {
-  const upset = GG.calcMatch(200, 700, 0);   // 브론즈가 골드를 이김
-  const normal = GG.calcMatch(700, 200, 0);  // 골드가 브론즈를 이김
-  assert.ok(upset.gain > 40, 'upset gain ' + upset.gain);
-  assert.ok(normal.gain <= 10, 'normal gain ' + normal.gain);
-  assert.ok(upset.upset);
-  // 높은 티어가 지면 많이 잃는다
-  assert.ok(upset.loss > normal.loss);
+test('티어 차이: 낮은 티어가 이기면 크게, 높은 티어가 이기면 조금', () => {
+  const upset = GG.calcMatch(300, 700, 0), normal = GG.calcMatch(700, 300, 0);
+  assert.ok(upset.gain > 50 && upset.upset);
+  assert.ok(normal.gain <= 6);
+  assert.ok(upset.loss > normal.loss * 5);
 });
 
 test('0점 아래로 내려가지 않는다', () => {
@@ -35,10 +34,24 @@ test('0점 아래로 내려가지 않는다', () => {
   assert.strictEqual(out.loser.points, 0);
 });
 
-test('연승 보너스', () => {
-  assert.strictEqual(GG.calcMatch(300, 300, 1).bonus, 0); // 2연승
-  assert.strictEqual(GG.calcMatch(300, 300, 2).bonus, 2); // 3연승
-  assert.strictEqual(GG.calcMatch(300, 300, 20).bonus, 10);
+test('연승 보너스와 연패 보호', () => {
+  assert.strictEqual(GG.calcMatch(450, 450, 1).bonus, 0); // 2연승
+  assert.strictEqual(GG.calcMatch(450, 450, 2).bonus, 3); // 3연승
+  assert.strictEqual(GG.calcMatch(450, 450, 3).bonus, 5);
+  assert.strictEqual(GG.calcMatch(450, 450, 9).bonus, 8);
+  const normal = GG.calcMatch(450, 450, 0).loss, shielded = GG.calcMatch(450, 450, 0, {}, 2);
+  assert.ok(shielded.shield && shielded.loss === Math.ceil(normal / 2));
+});
+
+test('replay: 기록을 고치면 점수가 다시 계산된다', () => {
+  const ms = [{ id: '1', a: 'x', b: 'y', t: 1 }, { id: '2', a: 'x', b: 'y', t: 2 }];
+  const r1 = GG.replay(['x', 'y'], ms);
+  assert.strictEqual(r1.players.x.wins, 2);
+  assert.strictEqual(r1.players.x.streak, 2);
+  const r2 = GG.replay(['x', 'y'], [ms[0], { id: '2', a: 'y', b: 'x', t: 2 }]);
+  assert.strictEqual(r2.players.x.wins, 1); assert.strictEqual(r2.players.y.wins, 1);
+  assert.strictEqual(r2.matches[1].a, 'y');
+  assert.ok(r2.matches[1].before.a.points >= 0);
 });
 
 test('추천: 가까운 점수 우선, 최근 상대는 뒤로', () => {

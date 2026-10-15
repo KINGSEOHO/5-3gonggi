@@ -27,7 +27,8 @@
   ];
 
   var data = null;            // 저장소에서 받은 값
-  var seen = {}, firstLoad = true; // 이미 본 대결 (다른 크롬북에서 확정된 내 대결 알림용)
+  var calc = null;            // 기록을 다시 계산한 결과 { players, matches }
+  var seen = {}, firstLoad = true, wantResult = {}; // 이미 본 대결 (다른 크롬북에서 확정된 내 대결 알림용)
   var ui = { a: null, b: null, rankFilter: 'all', pairs: null, teacher: false, busy: false };
   /* 이 크롬북의 주인 (로그인한 학생). 각자 크롬북에서 쓰는 걸 기본으로 한다 */
   var ME_KEY = LIVE ? 'gonggi-me' : 'gonggi-me-demo';
@@ -50,23 +51,17 @@
     var skill = [9, 7, 8, 4, 6, 5, 3, 6, 2, 7, 4, 5, 3, 1, 8, 2];
     var seed = 11;
     function rnd() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
-    var pl = {}, ms = [], pins = {};
+    var ms = [], pins = {};
     var t = Date.now() - 1000 * 60 * 60 * 24 * 14;
-    ROSTER.forEach(function (st) { pl[st.name] = baseStats(); pins[st.name] = DEMO_PIN; });
+    ROSTER.forEach(function (st) { pins[st.name] = DEMO_PIN; });
     for (var k = 0; k < 480; k++) {
       var i1 = Math.floor(rnd() * ROSTER.length), i2 = Math.floor(rnd() * ROSTER.length);
       if (i1 === i2) continue;
       var w = rnd() < skill[i1] / (skill[i1] + skill[i2]) ? i1 : i2, l = w === i1 ? i2 : i1;
-      var wn = ROSTER[w].name, ln = ROSTER[l].name;
-      var r = GGStore.buildMatch(Object.assign({ id: wn }, pl[wn]), Object.assign({ id: ln }, pl[ln]), GG.DEFAULT_SETTINGS);
-      pl[wn] = GGStore.stats(r.out.winner);
-      pl[ln] = GGStore.stats(r.out.loser);
       t += 1000 * 60 * (10 + Math.floor(rnd() * 40));
-      r.match.t = Math.min(t, Date.now() - 60000);
-      r.match.id = 'd' + k;
-      ms.push(r.match);
+      ms.push({ id: 'd' + k, a: ROSTER[w].name, b: ROSTER[l].name, t: Math.min(t, Date.now() - 60000) });
     }
-    return { players: pl, matches: ms, pins: pins, settings: Object.assign({}, GG.DEFAULT_SETTINGS) };
+    return { players: {}, matches: ms, pins: pins, settings: Object.assign({}, GG.DEFAULT_SETTINGS) };
   }
 
   var store = OFFLINE ? null : LIVE ? new GGStore.FirebaseStore(cfg) : new GGStore.LocalStore(demoSeed);
@@ -83,7 +78,8 @@
     if (cache) return cache;
     cache = ROSTER.map(function (st, i) {
       var saved = (data && data.players[st.name]) || {};
-      return Object.assign({ away: false }, baseStats(), saved,
+      var stat = (calc && calc.players[st.name]) || baseStats();
+      return Object.assign({ away: false }, saved, stat,
         { id: st.name, name: st.name, no: st.id, look: AV.normalize(saved, i) });
     });
     return cache;
@@ -99,7 +95,8 @@
     });
   }
   function placeOf(p) { return sorted().indexOf(p) + 1; }
-  function matches() { return (data && data.matches) || []; }
+  function matches() { return (calc && calc.matches) || []; }
+  function matchById(id) { var ms = matches(); for (var i = ms.length - 1; i >= 0; i--) if (ms[i].id === id) return ms[i]; return null; }
   function settings() { return (data && data.settings) || GG.DEFAULT_SETTINGS; }
 
   /* ───────── 그림 ───────── */
@@ -229,7 +226,7 @@
       var w = byId(rp.winner), l = byId(rp.loser);
       if (!w || !l) return;
       if (rp.loser === me) {
-        var pv = GG.calcMatch(w.points, l.points, w.streak > 0 ? w.streak : 0, settings());
+        var pv = GG.calcMatch(w.points, l.points, w.streak > 0 ? w.streak : 0, settings(), l.streak < 0 ? -l.streak : 0);
         html += '<section class="panel gilded inbox incoming"><div class="who">' + headshot(w, 44) + '<span><span class="eyebrow">Result Check</span><b style="display:block;font-size:17px">' + esc(w.name) + '이(가) 이겼다고 기록했어요</b>' +
           '<span class="sub">맞으면 결과가 기록돼요 · 나 <span class="down">−' + pv.loss + ' LP</span> · ' + esc(w.name) + ' <span class="up">+' + pv.total + ' LP</span></span></span></div>' +
           '<div class="row-actions"><button class="btn btn-ghost" type="button" data-act="report-reject" data-id="' + esc(rp.id) + '">아니에요</button><button class="btn btn-gold" type="button" data-act="report-accept" data-id="' + esc(rp.id) + '">맞아요, 졌어요</button></div></section>';
@@ -424,13 +421,51 @@
       (p.rest && byId(p.rest) ? '<p class="muted" style="margin:0;font-size:14px">' + esc(byId(p.rest).name) + '은(는) 이번 판은 쉬어요. 다시 섞으면 먼저 들어가요.</p>' : '') + '</section>';
   }
 
-  /* 기록 */
+  /* 기록 — 모두가 보는 전체 경기 기록과 전적표. 선생님은 고치거나 지울 수 있다 */
   VIEWS.history = function () {
-    var ms = matches().slice().reverse();
-    return '<div class="page-head"><div><span class="eyebrow">Match History</span><h1>대결 기록</h1><p>최근 ' + ms.length + '판. 잘못 기록된 결과는 선생님이 마지막 대결부터 취소할 수 있어요.</p></div>' +
-      (ms.length ? '<button class="btn" type="button" data-act="undo">마지막 대결 취소</button>' : '') + '</div>' +
-      '<section class="panel">' + feed(ms.slice(0, 150)) + '</section>';
+    var f = ui.histFilter || 'all';
+    var all = matches().slice().reverse();
+    var ms = f === 'all' ? all : all.filter(function (m) { return m.a === f || m.b === f; });
+    var opts = '<option value="all">모든 경기</option>' + players().map(function (p) {
+      return '<option value="' + esc(p.id) + '"' + (f === p.id ? ' selected' : '') + '>' + p.no + '. ' + esc(p.name) + '</option>';
+    }).join('');
+    var rows = ms.map(function (m) {
+      var w = byId(m.a), l = byId(m.b);
+      if (!w || !l) return '';
+      var dt = new Date(m.t);
+      var when = (dt.getMonth() + 1) + '/' + dt.getDate() + ' ' + String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0');
+      var tags = (m.upset ? ' <span class="pill pill-gold">역전승</span>' : '') + (m.bonus ? ' <span class="pill pill-up">연승 +' + m.bonus + '</span>' : '') +
+        (m.shield ? ' <span class="pill">연패 보호</span>' : '') + (m.edited ? ' <span class="pill">수정됨</span>' : '');
+      return '<tr><td class="num muted">' + when + '</td>' +
+        '<td><span class="who">' + headshot(w, 28) + '<b>' + esc(w.name) + '</b></span></td><td class="up">승 +' + m.gain + '</td>' +
+        '<td><span class="who">' + headshot(l, 28) + '<b>' + esc(l.name) + '</b></span></td><td class="down">패 −' + m.loss + '</td><td>' + tags + '</td>' +
+        (ui.teacher ? '<td><button class="btn btn-sm" type="button" data-act="edit-match" data-id="' + esc(m.id) + '">수정</button> <button class="btn btn-sm btn-danger" type="button" data-act="del-match" data-id="' + esc(m.id) + '">삭제</button></td>' : '') + '</tr>';
+    }).join('');
+    var table = sorted().map(function (p, i) {
+      return '<tr data-hist="' + esc(p.id) + '" style="cursor:pointer"><td class="board-pos" style="font-size:16px">' + (i + 1) + '</td><td><span class="who">' + headshot(p, 28) + '<b>' + esc(p.name) + '</b></span></td>' +
+        '<td class="num">' + (p.wins + p.losses) + '</td><td class="num up">' + p.wins + '</td><td class="num down">' + p.losses + '</td><td class="num">' + winRate(p) + '%</td><td class="num">' + (p.bestStreak || 0) + '</td><td>' + GG.getRank(p.points).label + '</td></tr>';
+    }).join('');
+    return '<div class="page-head"><div><span class="eyebrow">Match History</span><h1>경기 기록</h1><p>지금까지 모든 경기와 승패예요. 누구나 볼 수 있어요.' +
+      (ui.teacher ? ' <b class="gold-text">선생님 모드</b> · 기록을 고치거나 지우면 모든 LP가 다시 계산돼요.' : ' 잘못된 기록은 선생님께 말해 주세요.') + '</p></div>' +
+      (ui.teacher ? '' : '<button class="btn btn-ghost" type="button" data-act="teacher-edit">선생님 수정 모드</button>') + '</div>' +
+      '<section class="panel gilded section"><h2>전적표</h2><div class="table-wrap"><table><thead><tr><th>순위</th><th>이름</th><th>경기</th><th>승</th><th>패</th><th>승률</th><th>최고 연승</th><th>티어</th></tr></thead><tbody>' + table + '</tbody></table></div></section>' +
+      '<section class="panel section"><div class="section-head"><h2>경기 목록 <span class="muted num" style="font-size:15px">' + ms.length + '판</span></h2>' +
+      '<select class="input" id="hist-filter" style="width:auto" aria-label="친구별로 보기">' + opts + '</select></div>' +
+      (rows ? '<div class="table-wrap"><table><thead><tr><th>시간</th><th>승자</th><th></th><th>패자</th><th></th><th></th>' + (ui.teacher ? '<th>관리</th>' : '') + '</tr></thead><tbody>' + rows + '</tbody></table></div>' : '<div class="empty">아직 경기 기록이 없어요.</div>') + '</section>';
   };
+
+  function openEditMatch(id) {
+    var m = matchById(id);
+    if (!m) return;
+    var opt = function (sel) { return players().map(function (p) { return '<option value="' + esc(p.id) + '"' + (p.id === sel ? ' selected' : '') + '>' + p.no + '. ' + esc(p.name) + '</option>'; }).join(''); };
+    var dt = new Date(m.t - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    openLayer('<div class="modal modal-sm" role="dialog" aria-modal="true" aria-label="경기 수정"><span class="eyebrow">Edit Match</span><h2>경기 기록 수정</h2>' +
+      '<div class="form-row"><label for="em-w">이긴 사람</label><select class="input" id="em-w">' + opt(m.a) + '</select></div>' +
+      '<div class="row-actions" style="justify-content:center"><button class="btn btn-sm" type="button" data-act="em-swap">⇅ 승패 바꾸기</button></div>' +
+      '<div class="form-row"><label for="em-l">진 사람</label><select class="input" id="em-l">' + opt(m.b) + '</select></div>' +
+      '<div class="form-row"><label for="em-t">경기 시간</label><input class="input" id="em-t" type="datetime-local" value="' + dt + '"></div>' +
+      '<div class="form-error" id="em-err"></div><div class="row-actions"><button class="btn btn-ghost" type="button" data-act="close">취소</button><button class="btn btn-gold" type="button" data-act="em-save" data-id="' + esc(id) + '">저장</button></div></div>');
+  }
 
   /* 티어 안내 */
   VIEWS.tiers = function () {
@@ -443,20 +478,25 @@
         '<div class="range">' + (next ? t.min + ' – ' + (next.min - 1) : t.min + '+') + ' LP</div><div class="count">' + (t.divs ? 'IV · III · II · I' : '단계 없음') + ' · ' + (counts[t.id] || 0) + '명</div></div>';
     }).join('');
     var s = settings();
-    var ex = [['같은 티어', 500, 500], ['한 단계 아래가 승리', 450, 500], ['한 티어 아래가 승리', 400, 600], ['두 티어 아래가 승리', 300, 700], ['한 티어 위가 승리', 600, 400]].map(function (e) {
+    var ex = [['같은 티어 (실버)', 450, 450], ['같은 티어 (다이아)', 1250, 1250], ['한 티어 아래가 승리', 400, 600], ['두 티어 아래가 승리', 300, 700], ['한 티어 위가 승리', 600, 400]].map(function (e) {
       var r = GG.calcMatch(e[1], e[2], 0, s);
       return '<tr><td>' + e[0] + '<div class="muted" style="font-size:12px">' + GG.getRank(e[1]).label + ' vs ' + GG.getRank(e[2]).label + '</div></td><td class="up">+' + r.gain + '</td><td class="down">−' + r.loss + '</td></tr>';
     }).join('');
-    return '<div class="page-head"><div><span class="eyebrow">Ranked Tiers</span><h1>티어</h1><p>아이언부터 챌린저까지 10개 티어. 다이아몬드까지는 티어마다 IV → I 네 단계가 있어요.</p></div></div>' +
+    var per = GG.TIERS.map(function (t, i) {
+      var p = t.min + 20, r = GG.calcMatch(p, p, 0, s);
+      return '<tr><td><span class="tier-tag">' + crest(GG.getRank(p), 26) + '<span>' + t.name + '</span></span></td><td class="up">+' + r.gain + '</td><td class="down">−' + r.loss + '</td></tr>';
+    }).join('');
+    return '<div class="page-head"><div><span class="eyebrow">Ranked Tiers</span><h1>티어</h1><p>아이언부터 챌린저까지 10개 티어. 다이아몬드까지는 티어마다 IV → I 네 단계가 있어요. 위로 갈수록 오르기 어려운 피라미드예요.</p></div></div>' +
       '<div class="ladder">' + items + '</div>' +
       '<div class="grid-2"><section class="panel gilded section rules"><h2>LP 규칙</h2>' +
       '<p>시즌 시작 시 모두 <b>' + GG.getRank(s.startPoints).label + '</b>(' + s.startPoints + ' LP)에서 출발해요.</p>' +
-      '<p>비슷한 실력의 친구를 이기면 <b class="up">+' + s.winBase + '</b>, 지면 <b class="down">−' + s.lossBase + '</b>.</p>' +
-      '<p><b>낮은 티어가 높은 티어를 쓰러뜨리면</b> 최대 +' + s.winBase * 2 + ' LP. 반대로 높은 티어가 지면 크게 잃어요.</p>' +
-      '<p>높은 티어가 낮은 티어를 이기면 조금만 올라요. 강한 상대에게 도전할수록 빨리 올라갑니다.</p>' +
-      (s.streakBonus ? '<p>3연승부터 <b>연승 보너스</b> (+2, +4 … 최대 +10).</p>' : '') +
-      '<p>결과는 <b>진 친구가 자기 비밀번호</b>를 넣어야 기록돼요. LP는 0 아래로 내려가지 않아요.</p></section>' +
-      '<section class="panel section"><h2>이런 대결이라면</h2><div class="table-wrap"><table class="example-table"><thead><tr><th>대결</th><th>승자</th><th>패자</th></tr></thead><tbody>' + ex + '</tbody></table></div></section></div>';
+      '<p><b>피라미드:</b> 낮은 티어에서는 이기면 크게 오르고 져도 조금만 내려가요. 높은 티어로 갈수록 이겨도 조금 오르고 지면 많이 내려가요. 그래서 위로 갈수록 사람이 적어요.</p>' +
+      '<p><b>티어 차이:</b> 나보다 높은 티어를 이기면 훨씬 많이 얻고, 낮은 티어를 이기면 조금만 얻어요. 높은 티어가 낮은 티어에게 지면 크게 잃어요.</p>' +
+      (s.streakBonus ? '<p><b>연승 보너스:</b> 3연승 +3, 4연승 +5, 5연승부터 +8.</p>' : '') +
+      (s.lossShield ? '<p><b>연패 보호:</b> 3연패부터는 잃는 LP가 절반이에요.</p>' : '') +
+      '<p>결과는 <b>진 친구가 확인</b>해야 기록돼요. LP는 0 아래로 내려가지 않아요.</p></section>' +
+      '<section class="panel section"><h2>티어별 LP (비슷한 상대)</h2><div class="table-wrap"><table class="example-table"><thead><tr><th>티어</th><th>이기면</th><th>지면</th></tr></thead><tbody>' + per + '</tbody></table></div>' +
+      '<h2>티어 차이가 나면</h2><div class="table-wrap"><table class="example-table"><thead><tr><th>대결</th><th>승자</th><th>패자</th></tr></thead><tbody>' + ex + '</tbody></table></div></section></div>';
   };
 
   /* 선생님 */
@@ -482,13 +522,14 @@
           '<label class="check" style="font-size:13px"><input type="checkbox" data-away="' + esc(p.id) + '"' + (p.away ? ' checked' : '') + '> 쉬는 중</label></div>';
       }).join('') + '</div></section>' +
       '<div class="section"><section class="panel gilded section"><h2>LP 규칙</h2>' +
-      '<div class="form-row"><label for="set-win">비슷한 친구를 이겼을 때 얻는 LP</label><input class="input" id="set-win" type="number" min="5" max="100" value="' + s.winBase + '"></div>' +
-      '<div class="form-row"><label for="set-loss">비슷한 친구에게 졌을 때 잃는 LP</label><input class="input" id="set-loss" type="number" min="0" max="100" value="' + s.lossBase + '"></div>' +
+      '<div class="form-row"><label for="set-base">기준 LP (골드끼리 대결할 때 오르내리는 LP)</label><input class="input" id="set-base" type="number" min="10" max="60" value="' + (s.baseLP || 25) + '"></div>' +
+      '<p class="muted" style="margin:0;font-size:13px">티어마다 이 값에 배율이 곱해져요. 낮은 티어는 많이 얻고 적게 잃고, 높은 티어는 적게 얻고 많이 잃어요. 바꾸면 지난 경기까지 모두 다시 계산돼요.</p>' +
+      '<label class="check"><input type="checkbox" id="set-shield"' + (s.lossShield ? ' checked' : '') + '> 연패 보호 (3연패부터 잃는 LP 절반)</label>' +
       '<div class="form-row"><label for="set-start">시즌 시작 LP</label><select class="input" id="set-start">' +
       [0, 200, 400, 600].map(function (v) { return '<option value="' + v + '"' + (s.startPoints === v ? ' selected' : '') + '>' + v + ' LP (' + GG.getRank(v).label + ')</option>'; }).join('') + '</select></div>' +
       '<label class="check"><input type="checkbox" id="set-streak"' + (s.streakBonus ? ' checked' : '') + '> 연승 보너스</label>' +
       '<div class="row-actions"><button class="btn btn-gold" type="button" data-act="save-settings">규칙 저장</button></div>' +
-      '<p class="muted" style="margin:0;font-size:13px">얻는 LP를 잃는 LP보다 크게 두면 대결을 많이 할수록 반 전체가 조금씩 올라가요.</p></section>' +
+      '</section>' +
       '<section class="panel gilded section"><h2>링크 나눠주기</h2><p class="muted" style="margin:0;font-size:14px">아이들이 크롬북으로 이 주소에 들어오면 돼요. 클래스룸에 올리거나 QR 코드를 화면에 띄워 주세요.</p>' +
       '<input class="input" id="share-url" readonly value="' + esc(location.origin + location.pathname) + '" aria-label="앱 주소">' +
       '<div class="row-actions" style="justify-content:flex-start"><button class="btn" type="button" data-act="copy-url">주소 복사</button><button class="btn" type="button" data-act="show-qr">QR 코드 크게 보기</button></div></section>' +
@@ -645,8 +686,22 @@
     ok.onclick = function () { closeLayer(); onOk(); };
   }
 
+  /* 방금 기록한 경기는 다시 계산이 끝나면 결과 화면을 띄운다 */
+  function expectResult(id) { wantResult[id] = true; seen[id] = true; showWanted(); }
+  function showWanted() {
+    var shown = false;
+    Object.keys(wantResult).forEach(function (id) {
+      var m = matchById(id);
+      if (m) { delete wantResult[id]; showResult(m); shown = true; }
+    });
+    return shown;
+  }
+
   /* 승리 화면 */
+  var shownResult = {};
   function showResult(m) {
+    if (shownResult[m.id]) return;
+    shownResult[m.id] = true;
     var w = byId(m.a), l = byId(m.b);
     var wr0 = GG.getRank(m.before.a.points), wr1 = GG.getRank(m.after.a);
     var lr0 = GG.getRank(m.before.b.points), lr1 = GG.getRank(m.after.b);
@@ -663,8 +718,8 @@
       '<div class="result-line"><span class="who">' + headshot(w, 36) + '<span><b>' + esc(w.name) + '</b><span class="sub">' + wr1.label + ' · ' + m.after.a + ' LP' + (m.bonus ? ' · 연승 보너스 +' + m.bonus : '') + '</span></span></span>' +
       '<span class="result-delta up" id="gain-count">+0</span>' + lpBar(wr1, startPct) + '</div>' +
       '<div class="result-line"><span class="who">' + headshot(l, 36) + '<span><b>' + esc(l.name) + '</b><span class="sub">' + lr1.label + ' · ' + m.after.b + ' LP</span></span></span>' +
-      '<span class="result-delta down">−' + m.loss + '</span></div>' + demote + '</div>' + promo +
-      '<div class="row-actions" style="justify-content:center"><button class="btn btn-ghost" type="button" data-act="undo-now">잘못 기록했어요</button><button class="btn btn-gold" type="button" data-act="close">계속하기</button></div></div>');
+      '<span class="result-delta down">−' + m.loss + '</span>' + (m.shield ? '<span class="sub" style="grid-column:1/-1">연패 보호로 절반만 잃었어요</span>' : '') + '</div>' + demote + '</div>' + promo +
+      '<div class="row-actions" style="justify-content:center"><button class="btn btn-ghost" type="button" data-act="undo-now" data-id="' + esc(m.id) + '">잘못 기록했어요</button><button class="btn btn-gold" type="button" data-act="close">계속하기</button></div></div>');
     // LP 숫자 올라가기 + 막대 채우기
     var counter = document.getElementById('gain-count'), start = performance.now();
     (function tick(now) {
@@ -742,10 +797,10 @@
     var w = sideKey === 'a' ? a : b, l = w === a ? b : a;
     verifyStudent(l.id, l.name + '의 패배 확인', '<b>' + esc(w.name) + '</b> 승리를 기록할게요. 진 친구 <b>' + esc(l.name) + '</b>이(가) 비밀번호를 넣어 주세요.', function () {
       ui.busy = true;
-      store.record(w.id, l.id, baseStats).then(function (m) {
-        ui.busy = false; seen[m.id] = true;
+      store.record(w.id, l.id, { by: 'teacher' }).then(function (m) {
+        ui.busy = false;
         if (ui.pairs && ui.pairs.current != null) { ui.pairs.done[ui.pairs.current] = true; ui.pairs.current = null; render(); }
-        showResult(m);
+        expectResult(m.id);
       }, fail);
     });
   }
@@ -753,10 +808,11 @@
 
   document.addEventListener('click', function (e) {
     if (e.target.matches && e.target.matches('[data-backdrop]')) { closeLayer(); return; }
-    var el = e.target.closest('[data-act],[data-profile],[data-filter],[data-win],[data-opp],[data-pair],[data-pickside],[data-choose],[data-wear],[data-wtab]');
+    var el = e.target.closest('[data-act],[data-profile],[data-filter],[data-win],[data-opp],[data-pair],[data-pickside],[data-choose],[data-wear],[data-wtab],[data-hist]');
     if (!el) return;
     var d = el.dataset;
     if (d.profile) return openProfile(d.profile);
+    if (d.hist) { ui.histFilter = d.hist; render(); var hf = document.getElementById('hist-filter'); if (hf) hf.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
     if (d.filter) { ui.rankFilter = d.filter; return render(); }
     if (d.pickside) { if (personal() && d.pickside === 'a') return; return openPicker(d.pickside); }
     if (d.choose) {
@@ -781,6 +837,24 @@
     }
     switch (d.act) {
       case 'close': closeLayer(); break;
+      case 'teacher-edit': verifyTeacher(function () { render(); }); break;
+      case 'edit-match': openEditMatch(d.id); break;
+      case 'em-swap':
+        var ew = document.getElementById('em-w'), el2 = document.getElementById('em-l'), tmp = ew.value;
+        ew.value = el2.value; el2.value = tmp;
+        break;
+      case 'em-save':
+        var nw = document.getElementById('em-w').value, nl = document.getElementById('em-l').value, nt = new Date(document.getElementById('em-t').value).getTime();
+        if (nw === nl) { document.getElementById('em-err').textContent = '이긴 사람과 진 사람이 같아요.'; break; }
+        if (!nt) { document.getElementById('em-err').textContent = '경기 시간을 넣어 주세요.'; break; }
+        store.updateMatch(d.id, { a: nw, b: nl, t: nt }).then(function () { closeLayer(); toast('경기 기록을 고쳤어요. LP를 다시 계산했어요'); }, fail);
+        break;
+      case 'del-match':
+        var dm = matchById(d.id);
+        ask('이 경기를 삭제할까요?', esc(dm.a) + ' 승 vs ' + esc(dm.b) + ' 패 (' + ago(dm.t) + ') 기록을 지우고 모든 LP를 다시 계산해요.', '삭제', function () {
+          store.deleteMatch(d.id).then(function () { toast('경기를 삭제했어요'); }, fail);
+        });
+        break;
       case 'login': openPicker('login'); break;
       case 'copy-url':
         var u = document.getElementById('share-url');
@@ -815,14 +889,14 @@
         ask(winner.name + '에게 졌나요?', '결과가 바로 기록되고 내 LP가 내려가요.', '네, 졌어요', function () {
           ui.busy = true;
           var pairIds = reports().filter(function (rp) { return (rp.winner === winner.id && rp.loser === me) || (rp.winner === me && rp.loser === winner.id); }).map(function (rp) { return rp.id; });
-          store.record(winner.id, me, baseStats, { cleanup: pairIds }).then(function (m) { ui.busy = false; seen[m.id] = true; showResult(m); }, fail);
+          store.record(winner.id, me, { cleanup: pairIds, by: me }).then(function (m) { ui.busy = false; expectResult(m.id); }, fail);
         });
         break;
       case 'report-accept':
         var rp0 = reports().filter(function (x) { return x.id === d.id; })[0];
         if (!rp0 || ui.busy) break;
         ui.busy = true;
-        store.record(rp0.winner, rp0.loser, baseStats, { consume: rp0.id }).then(function (m) { ui.busy = false; seen[m.id] = true; showResult(m); }, fail);
+        store.record(rp0.winner, rp0.loser, { consume: rp0.id, by: me }).then(function (m) { ui.busy = false; expectResult(m.id); }, fail);
         break;
       case 'report-reject':
         store.removeReport(d.id).then(function () { toast('요청을 지웠어요'); }, fail);
@@ -865,14 +939,14 @@
         wardrobe.draft = AV.defaults(ROSTER.map(function (st) { return st.name; }).indexOf(wardrobe.id)); drawWardrobe();
         break;
       case 'undo-now':
-        store.undoLast().then(function () { closeLayer(); toast('방금 대결을 취소했어요'); }, fail);
+        store.deleteMatch(d.id).then(function () { closeLayer(); toast('방금 대결을 취소했어요'); }, fail);
         break;
       case 'undo':
         verifyTeacher(function () {
           var lm = matches()[matches().length - 1];
           if (!lm) return;
           ask('마지막 대결을 취소할까요?', esc(lm.a) + ' 승리 vs ' + esc(lm.b) + ' (' + ago(lm.t) + ') 결과를 지우고 두 선수 LP를 대결 전으로 돌려요.', '취소하기', function () {
-            store.undoLast().then(function () { toast('마지막 대결을 취소했어요'); }, fail);
+            store.deleteMatch(lm.id).then(function () { toast('마지막 대결을 취소했어요'); }, fail);
           });
         });
         break;
@@ -884,8 +958,8 @@
       case 'teacher-logout': ui.teacher = false; render(); break;
       case 'save-settings':
         store.saveSettings(Object.assign({}, settings(), {
-          winBase: Math.max(5, Math.min(100, parseInt(document.getElementById('set-win').value, 10) || 25)),
-          lossBase: Math.max(0, Math.min(100, parseInt(document.getElementById('set-loss').value, 10) || 0)),
+          baseLP: Math.max(10, Math.min(60, parseInt(document.getElementById('set-base').value, 10) || 25)),
+          lossShield: document.getElementById('set-shield').checked,
           startPoints: parseInt(document.getElementById('set-start').value, 10) || 0,
           streakBonus: document.getElementById('set-streak').checked
         })).then(function () { toast('규칙을 저장했어요'); }, fail);
@@ -901,7 +975,7 @@
         break;
       case 'reset-season':
         ask('새 시즌을 시작할까요?', '모든 선수의 LP와 전적, 대결 기록이 지워져요. 되돌릴 수 없어요. 필요하면 먼저 백업해 두세요.', '시즌 초기화', function () {
-          store.resetSeason(baseStats).then(function () { ui.pairs = null; toast('새 시즌이 시작됐어요'); }, fail);
+          store.resetSeason().then(function () { ui.pairs = null; toast('새 시즌이 시작됐어요'); }, fail);
         });
         break;
       case 'reset-demo':
@@ -918,6 +992,7 @@
       store.saveSettings(Object.assign({}, settings(), { boost: bl })).then(function () { toast(bid + (e.target.checked ? ' 추천에 자주 보이기' : ' 추천 보통으로')); }, fail);
       return;
     }
+    if (e.target.id === 'hist-filter') { ui.histFilter = e.target.value; render(); return; }
     var id = e.target.dataset && e.target.dataset.away;
     if (id) store.updatePlayer(id, { away: e.target.checked }).then(function () { toast(id + (e.target.checked ? ' 쉬는 중' : ' 복귀')); }, fail);
   });
@@ -960,8 +1035,11 @@
       seen[m.id] = true;
     });
     firstLoad = false;
-    data = d; render();
-    if (fresh.length && !layer.querySelector('.result')) showResult(fresh[fresh.length - 1]);
+    data = d;
+    calc = GG.replay(ROSTER.map(function (st) { return st.name; }), d.matches, d.settings);
+    render();
+    fresh = fresh.filter(function (m) { return !wantResult[m.id]; }).map(function (m) { return matchById(m.id); }).filter(Boolean);
+    if (!showWanted() && fresh.length && !layer.querySelector('.result')) showResult(fresh[fresh.length - 1]);
   },
     function () { toast('리그 정보를 불러오지 못했어요. Firestore 규칙에서 gonggi_ 컬렉션을 허용했는지 확인해 주세요.', true); });
 })();
