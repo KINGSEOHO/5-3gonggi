@@ -27,5 +27,6 @@ window.GG_CONFIG = {
 ],
   TEACHER_PASSWORD: '9494',
   LEAGUE_NAME: '해바라기 리그',
-  SEASON: 1
+  SEASON: 1,
+  SEASON_END: '2026-10-30'  // 이번 시즌 종료일 (선생님 메뉴에서도 바꿀 수 있어요)
 };

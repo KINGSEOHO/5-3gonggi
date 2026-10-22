@@ -117,7 +117,8 @@ main {
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
-.page { display: flex; flex-direction: column; gap: 26px; animation: rise .35s ease-out; }
+.page { display: flex; flex-direction: column; gap: 26px; }
+.page.enter { animation: rise .35s ease-out; }
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .page-head p { margin: 6px 0 0; color: var(--muted); max-width: 60ch; }
 .section { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
@@ -561,6 +562,11 @@ textarea.code { min-height: 140px; font-family: ui-monospace, Menlo, Consolas, m
 .adj-who:focus-within { outline: 2px solid var(--hex); }
 .adj-row { display: flex; gap: 10px; flex-wrap: wrap; }
 .adj-row .form-row:first-child { width: 110px; }
+
+/* 시즌 안내 */
+.season-note { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border: 1px solid var(--gold-lo); background: rgba(6, 8, 14, .55); color: #d9dde5; font-size: 14px; max-width: 52ch; }
+.season-note svg { color: var(--gold); flex-shrink: 0; margin-top: 2px; }
+.season-note b { color: var(--gold-hi); }
 </style>
 </head>
 <body>
@@ -614,7 +620,8 @@ window.GG_CONFIG = {
 ],
   TEACHER_PASSWORD: '9494',
   LEAGUE_NAME: '해바라기 리그',
-  SEASON: 1
+  SEASON: 1,
+  SEASON_END: '2026-10-30'  // 이번 시즌 종료일 (선생님 메뉴에서도 바꿀 수 있어요)
 };
 </script>
 <script>
@@ -1579,6 +1586,7 @@ window.GG_CONFIG = {
 
   function route() { var r = (location.hash || '#home').slice(1); return VIEWS[r] ? r : 'home'; }
 
+  var lastRoute = null;
   function render() {
     cache = null;
     var r = route();
@@ -1595,13 +1603,27 @@ window.GG_CONFIG = {
       return;
     }
     drawMe();
-    main.innerHTML = '<div class="page">' + inbox() + VIEWS[r]() + '</div>';
+    // 메뉴를 옮길 때만 나타나는 효과 (데이터가 바뀔 때마다 깜빡이지 않게)
+    var enter = r !== lastRoute; lastRoute = r;
+    main.innerHTML = '<div class="page' + (enter ? ' enter' : '') + '">' + inbox() + VIEWS[r]() + '</div>';
   }
   function renderNav(active) {
     if (SETUP) { document.getElementById('nav').innerHTML = ''; return; }
     document.getElementById('nav').innerHTML = NAV.map(function (n) {
       return '<a class="navlink' + (n.id === active ? ' active' : '') + '" href="#' + n.id + '"' + (n.id === active ? ' aria-current="page"' : '') + '>' + navIcon(n.icon) + '<span>' + n.label + '</span></a>';
     }).join('');
+  }
+  /* 시즌 안내: 2주 단위, 종료일은 선생님 메뉴(또는 config.js SEASON_END) */
+  function seasonEnd() { return settings().seasonEnd || (SHEET ? '' : cfg.SEASON_END || ''); }
+  function seasonNotice() {
+    var end = seasonEnd(), txt = '시즌은 <b>2주 단위</b>로 진행돼요. 시즌이 끝나면 LP와 티어가 새로 시작돼요.';
+    if (end) {
+      var e = new Date(end + 'T23:59:59'), days = Math.ceil((new Date(end + 'T00:00:00') - new Date(new Date().toDateString())) / 86400000);
+      var wk = '일월화수목금토'.charAt(e.getDay());
+      txt += ' 이번 <b>시즌 ' + SEASON + '</b>은 <b>' + (e.getMonth() + 1) + '월 ' + e.getDate() + '일(' + wk + ')</b>에 끝나요' +
+        (days > 0 ? ' <span class="pill pill-gold">D-' + days + '</span>' : days === 0 ? ' <span class="pill pill-gold">오늘 마감</span>' : ' <span class="pill">종료됨</span>');
+    }
+    return '<div class="season-note">' + navIcon('M7 2h2v2h6V2h2v2h3a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3zm-2 8v9h14v-9zm0-2h14V6H5z', 18) + '<span>' + txt + '</span></div>';
   }
   function demoBanner() {
     if (REAL) return '';
@@ -1689,7 +1711,7 @@ window.GG_CONFIG = {
     return demoBanner() +
       '<section class="hero"><div class="hero-copy"><span class="eyebrow">Season ' + SEASON + ' · ' + esc(LEAGUE) + '</span>' +
       '<h1><span class="en gold-text">GONGGI LEGENDS</span>우리 반 최강의<br>공기 장인은 누구인가</h1>' +
-      '<p>친구에게 도전하고 승리해 LP를 모으세요. 나보다 높은 티어를 쓰러뜨리면 더 큰 보상이 기다립니다.</p>' +
+      '<p>친구에게 도전하고 승리해 LP를 모으세요. 나보다 높은 티어를 쓰러뜨리면 더 큰 보상이 기다립니다.</p>' + seasonNotice() +
       '<div class="hero-actions"><a class="btn btn-play" href="#battle">PLAY <span class="ko">대결 시작</span></a><a class="link" href="#rank">전체 랭킹 →</a></div></div>' +
       '<div class="hero-stage">' + (stage || '<div class="champ" style="gap:8px">' + crest(GG.getRank(GG.TIERS[9].min), 130) +
         '<span class="champ-place">Season ' + SEASON + ' Open</span><span class="champ-name" style="font-family:var(--font-title);font-size:20px;max-width:none">첫 승리의 주인공은?</span></div>') + '</div></section>' +
@@ -1699,7 +1721,7 @@ window.GG_CONFIG = {
 
       '<div class="grid-2"><section class="panel gilded section"><div class="section-head"><h2 class="title-rule">랭킹</h2><a href="#rank">전체 보기 →</a></div>' +
       board(list.slice(0, 8)) + '</section>' +
-      '<div class="section"><section class="panel section"><div class="section-head"><h2>최근 대결</h2><a href="#history">기록 →</a></div>' + feed(ms.slice(-5).reverse()) + '</section>' +
+      '<div class="section"><section class="panel section"><div class="section-head"><h2>최근 기록</h2><a href="#history">기록 →</a></div>' + feed(recentMixed(6)) + '</section>' +
       '<section class="panel section"><h2>티어 분포</h2><div class="dist" role="img" aria-label="티어 분포">' + counts.map(function (c, i) {
         return c ? '<span style="flex:' + c + ';background:' + GG.TIERS[i].color + ';box-shadow:0 0 8px ' + GG.TIERS[i].color + '"></span>' : '';
       }).join('') + '</div><div class="dist-legend">' + counts.map(function (c, i) {
@@ -1720,9 +1742,22 @@ window.GG_CONFIG = {
     return '<div class="board">' + list.map(function (p, i) { return boardRow(p, i + 1); }).join('') + '</div>';
   }
 
+  /* 경기와 선생님이 준 LP를 시간순으로 섞은 최근 기록 */
+  function recentMixed(n) {
+    return matches().concat(adjusts().map(function (j) { return Object.assign({ adj: true }, j); }))
+      .sort(function (x, y) { return y.t - x.t; }).slice(0, n);
+  }
+  function adjustRow(j, size) {
+    var p = byId(j.p);
+    return '<div class="feed-row">' + (p ? headshot(p, size || 36) : '<span></span>') + '<div class="feed-text"><span class="pill pill-hex">선생님</span> <b>' + esc(j.p) + '</b>에게 ' +
+      '<span class="' + (j.d > 0 ? 'up' : 'down') + '" style="font-size:15px">' + (j.d > 0 ? '+' : '−') + Math.abs(j.d) + ' LP</span>' + (j.note ? ' <span class="muted">· ' + esc(j.note) + '</span>' : '') +
+      '<div class="feed-time">' + ago(j.t) + '</div></div>' +
+      (ui.teacher ? '<button class="btn btn-sm btn-danger" type="button" data-act="adj-del" data-id="' + esc(j.id) + '">삭제</button>' : '<span class="' + (j.d > 0 ? 'up' : 'down') + '">' + (j.d > 0 ? '+' : '−') + Math.abs(j.d) + '</span>') + '</div>';
+  }
   function feed(list) {
     if (!list.length) return '<p class="muted" style="margin:0">아직 대결 기록이 없어요. 첫 대결의 주인공이 되어 보세요.</p>';
     return '<div class="feed">' + list.map(function (m) {
+      if (m.adj) return adjustRow(m);
       var w = byId(m.a), l = byId(m.b);
       if (!w || !l) return '';
       var wr0 = GG.getRank(m.before.a.points), wr1 = GG.getRank(m.after.a);
@@ -1857,7 +1892,8 @@ window.GG_CONFIG = {
     var opts = '<option value="all">모든 경기</option>' + players().map(function (p) {
       return '<option value="' + esc(p.id) + '"' + (f === p.id ? ' selected' : '') + '>' + p.no + '. ' + esc(p.name) + '</option>';
     }).join('');
-    var rows = ms.map(function (m) {
+    var FOLD = 10, folded = !ui.histOpen && ms.length > FOLD;
+    var rows = (folded ? ms.slice(0, FOLD) : ms).map(function (m) {
       var w = byId(m.a), l = byId(m.b);
       if (!w || !l) return '';
       var dt = new Date(m.t);
@@ -1879,18 +1915,21 @@ window.GG_CONFIG = {
       '<section class="panel gilded section"><h2>전적표</h2><div class="table-wrap"><table><thead><tr><th>순위</th><th>이름</th><th>경기</th><th>승</th><th>패</th><th>승률</th><th>최고 연승</th><th>티어</th></tr></thead><tbody>' + table + '</tbody></table></div></section>' +
       '<section class="panel section"><div class="section-head"><h2>경기 목록 <span class="muted num" style="font-size:15px">' + ms.length + '판</span></h2>' +
       '<select class="input" id="hist-filter" style="width:auto" aria-label="친구별로 보기">' + opts + '</select></div>' +
-      (rows ? '<div class="table-wrap"><table><thead><tr><th>시간</th><th>승자</th><th></th><th>패자</th><th></th><th></th>' + (ui.teacher ? '<th>관리</th>' : '') + '</tr></thead><tbody>' + rows + '</tbody></table></div>' : '<div class="empty">아직 경기 기록이 없어요.</div>') + '</section>' +
+      (rows ? '<div class="table-wrap"><table><thead><tr><th>시간</th><th>승자</th><th></th><th>패자</th><th></th><th></th>' + (ui.teacher ? '<th>관리</th>' : '') + '</tr></thead><tbody>' + rows + '</tbody></table></div>' : '<div class="empty">아직 경기 기록이 없어요.</div>') +
+      (ms.length > FOLD ? '<div class="row-actions" style="justify-content:center"><button class="btn" type="button" data-act="hist-fold">' +
+        (folded ? '▼ 나머지 ' + (ms.length - FOLD) + '경기 펼치기' : '▲ 접기 (최근 ' + FOLD + '경기만)') + '</button></div>' : '') + '</section>' +
       adjustHistory(f);
   };
 
   function adjustHistory(f) {
     var list = adjusts().slice().reverse().filter(function (j) { return f === 'all' || j.p === f; });
     if (!list.length) return '';
-    return '<section class="panel section"><h2>선생님이 준 LP <span class="muted num" style="font-size:15px">' + list.length + '건</span></h2><div class="feed">' + list.map(function (j) {
-      var p = byId(j.p);
-      return '<div class="feed-row">' + (p ? headshot(p, 30) : '<span></span>') + '<div class="feed-text"><b>' + esc(j.p) + '</b>' + (j.note ? ' <span class="muted">· ' + esc(j.note) + '</span>' : '') +
-        '<div class="feed-time">' + ago(j.t) + '</div></div><span class="' + (j.d > 0 ? 'up' : 'down') + '">' + (j.d > 0 ? '+' : '−') + Math.abs(j.d) + '</span></div>';
-    }).join('') + '</div></section>';
+    var FOLD = 10, folded = !ui.adjOpen && list.length > FOLD;
+    return '<section class="panel section"><h2>선생님이 준 LP <span class="muted num" style="font-size:15px">' + list.length + '건</span></h2>' +
+      (ui.teacher ? '<p class="muted" style="margin:0;font-size:13px">삭제하면 그 LP가 빠지고 점수가 다시 계산돼요.</p>' : '') +
+      '<div class="feed">' + (folded ? list.slice(0, FOLD) : list).map(function (j) { return adjustRow(j, 30); }).join('') + '</div>' +
+      (list.length > FOLD ? '<div class="row-actions" style="justify-content:center"><button class="btn" type="button" data-act="adj-fold">' +
+        (folded ? '▼ 나머지 ' + (list.length - FOLD) + '건 펼치기' : '▲ 접기') + '</button></div>' : '') + '</section>';
   }
 
   function openEditMatch(id) {
@@ -1966,6 +2005,7 @@ window.GG_CONFIG = {
       '<label class="check"><input type="checkbox" id="set-shield"' + (s.lossShield ? ' checked' : '') + '> 연패 보호 (3연패부터 잃는 LP 절반)</label>' +
       '<div class="form-row"><label for="set-start">시즌 시작 LP</label><select class="input" id="set-start">' +
       [0, 200, 400, 600].map(function (v) { return '<option value="' + v + '"' + (s.startPoints === v ? ' selected' : '') + '>' + v + ' LP (' + GG.getRank(v).label + ')</option>'; }).join('') + '</select></div>' +
+      '<div class="form-row"><label for="set-end">이번 시즌 종료일 (로비에 안내돼요)</label><input class="input" id="set-end" type="date" value="' + esc(seasonEnd()) + '"></div>' +
       '<label class="check"><input type="checkbox" id="set-streak"' + (s.streakBonus ? ' checked' : '') + '> 연승 보너스</label>' +
       '<div class="row-actions"><button class="btn btn-gold" type="button" data-act="save-settings">규칙 저장</button></div>' +
       '</section>' +
@@ -2360,6 +2400,8 @@ window.GG_CONFIG = {
         });
         break;
       case 'login': openPicker('login'); break;
+      case 'hist-fold': ui.histOpen = !ui.histOpen; render(); break;
+      case 'adj-fold': ui.adjOpen = !ui.adjOpen; render(); break;
       case 'adj-all': readAdjustForm(); ui.adjPick = {}; players().forEach(function (p) { ui.adjPick[p.id] = true; }); render(); document.getElementById('adjust').scrollIntoView({ block: 'start' }); break;
       case 'adj-none': readAdjustForm(); ui.adjPick = {}; render(); document.getElementById('adjust').scrollIntoView({ block: 'start' }); break;
       case 'adj-apply':
@@ -2372,8 +2414,8 @@ window.GG_CONFIG = {
         break;
       case 'adj-del':
         var aj = adjusts().filter(function (x) { return x.id === d.id; })[0];
-        ask('이 점수 조정을 취소할까요?', aj ? esc(aj.p) + ' ' + (aj.d > 0 ? '+' : '−') + Math.abs(aj.d) + ' LP · ' + esc(aj.note || '') : '', '취소하기', function () {
-          store.deleteAdjust(d.id).then(function () { toast('점수 조정을 취소했어요'); }, fail);
+        ask('선생님이 준 LP를 삭제할까요?', aj ? esc(aj.p) + ' ' + (aj.d > 0 ? '+' : '−') + Math.abs(aj.d) + ' LP' + (aj.note ? ' · ' + esc(aj.note) : '') + '<br>삭제하면 그만큼 LP가 다시 빠져요(뺀 LP였다면 돌아와요).' : '', '삭제', function () {
+          store.deleteAdjust(d.id).then(function () { toast('삭제했어요. LP를 다시 계산했어요'); }, fail);
         });
         break;
       case 'save-roster':
@@ -2517,7 +2559,8 @@ window.GG_CONFIG = {
           baseLP: Math.max(10, Math.min(60, parseInt(document.getElementById('set-base').value, 10) || 25)),
           lossShield: document.getElementById('set-shield').checked,
           startPoints: parseInt(document.getElementById('set-start').value, 10) || 0,
-          streakBonus: document.getElementById('set-streak').checked
+          streakBonus: document.getElementById('set-streak').checked,
+          seasonEnd: document.getElementById('set-end').value
         })).then(function () { toast('규칙을 저장했어요'); }, fail);
         break;
       case 'copy-backup':
@@ -2550,7 +2593,7 @@ window.GG_CONFIG = {
       store.saveSettings(Object.assign({}, settings(), { boost: bl })).then(function () { toast(bid + (e.target.checked ? ' 추천에 자주 보이기' : ' 추천 보통으로')); }, fail);
       return;
     }
-    if (e.target.id === 'hist-filter') { ui.histFilter = e.target.value; render(); return; }
+    if (e.target.id === 'hist-filter') { ui.histFilter = e.target.value; ui.histOpen = false; render(); return; }
     var id = e.target.dataset && e.target.dataset.away;
     if (id) store.updatePlayer(id, { away: e.target.checked }).then(function () { toast(id + (e.target.checked ? ' 쉬는 중' : ' 복귀')); }, fail);
   });

@@ -105,7 +105,8 @@ main {
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
-.page { display: flex; flex-direction: column; gap: 26px; animation: rise .35s ease-out; }
+.page { display: flex; flex-direction: column; gap: 26px; }
+.page.enter { animation: rise .35s ease-out; }
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .page-head p { margin: 6px 0 0; color: var(--muted); max-width: 60ch; }
 .section { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
@@ -549,3 +550,8 @@ textarea.code { min-height: 140px; font-family: ui-monospace, Menlo, Consolas, m
 .adj-who:focus-within { outline: 2px solid var(--hex); }
 .adj-row { display: flex; gap: 10px; flex-wrap: wrap; }
 .adj-row .form-row:first-child { width: 110px; }
+
+/* 시즌 안내 */
+.season-note { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border: 1px solid var(--gold-lo); background: rgba(6, 8, 14, .55); color: #d9dde5; font-size: 14px; max-width: 52ch; }
+.season-note svg { color: var(--gold); flex-shrink: 0; margin-top: 2px; }
+.season-note b { color: var(--gold-hi); }
