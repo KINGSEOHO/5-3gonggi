@@ -654,7 +654,10 @@
     if (!d) { toast('LP를 넣어 주세요', true); return; }
     if (Math.abs(d) > 1000) { toast('LP는 -1000 ~ 1000 사이로 넣어 주세요', true); return; }
     ui.busy = true;
-    var jobs = ids.reduce(function (p, id) { return p.then(function () { return store.addAdjust(id, d, note); }); }, Promise.resolve());
+    // 기기마다 시계가 조금씩 달라도 '지금까지의 모든 경기 뒤'에 들어가게 한다
+    var lastT = matches().concat(adjusts()).reduce(function (m, x) { return Math.max(m, x.t || 0); }, 0);
+    var t0 = Math.max(Date.now(), lastT + 1);
+    var jobs = ids.reduce(function (p, id, k) { return p.then(function () { return store.addAdjust(id, d, note, t0 + k); }); }, Promise.resolve());
     jobs.then(function () {
       ui.busy = false; ui.adjPick = {};
       toast((ids.length === 1 ? ids[0] : ids.length + '명') + '에게 ' + (d > 0 ? '+' : '−') + Math.abs(d) + ' LP' + (note ? ' (' + note + ')' : ''));
@@ -702,7 +705,7 @@
       lpBar(r) + '<div class="muted" style="font-size:13px">' + nextStepText(r) + '</div></div></div>' +
       '<div class="stats"><div class="stat"><b>' + p.wins + '</b><span>승리</span></div><div class="stat"><b>' + p.losses + '</b><span>패배</span></div>' +
       '<div class="stat"><b>' + winRate(p) + '%</b><span>승률</span></div><div class="stat"><b>' + (p.bestStreak || 0) + '</b><span>최고 연승</span></div></div>' +
-      '<div class="muted" style="font-size:13px">시즌 최고: ' + peak.label + ' (' + (p.peak || p.points) + ' LP)</div>' +
+      '<div class="muted" style="font-size:13px">시즌 최고: ' + peak.label + ' (' + (p.peak || p.points) + ' LP)' + (p.adjusted ? ' · 선생님이 준 LP ' + (p.adjusted > 0 ? '+' : '−') + Math.abs(p.adjusted) : '') + '</div>' +
       '<div class="row-actions" style="justify-content:flex-start"><button class="btn btn-play" type="button" data-act="battle-with" data-id="' + esc(id) + '">PLAY <span class="ko">이 선수로 대결</span></button>' +
       '<button class="btn" type="button" data-act="customize" data-id="' + esc(id) + '">캐릭터 꾸미기</button></div>' +
       (ui.teacher ? '<div class="row-actions" style="justify-content:flex-start;align-items:center"><span class="label">선생님 LP</span>' + [10, 5, -5, -10].map(function (n) {

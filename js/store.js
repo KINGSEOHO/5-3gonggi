@@ -56,8 +56,8 @@
       ready.j = true; emit();
     }, fail);
   };
-  FirebaseStore.prototype.addAdjust = function (p, d, note) {
-    return this.db.collection('gonggi_adjust').doc().set({ p: p, d: d, note: note || '', t: Date.now() });
+  FirebaseStore.prototype.addAdjust = function (p, d, note, t) {
+    return this.db.collection('gonggi_adjust').doc().set({ p: p, d: d, note: note || '', t: t || Date.now() });
   };
   FirebaseStore.prototype.deleteAdjust = function (id) { return this.db.collection('gonggi_adjust').doc(id).delete(); };
   FirebaseStore.prototype.record = function (winnerId, loserId, opts) {
@@ -194,7 +194,7 @@
   SheetStore.prototype.saveSettings = function (st) { return this._post({ action: 'saveSettings', settings: st }); };
   SheetStore.prototype.setRoster = function (names, league) { return this._post({ action: 'setRoster', students: names, league: league }); };
   SheetStore.prototype.resetPin = function (id) { return this._post({ action: 'resetPin', id: id }); };
-  SheetStore.prototype.addAdjust = function (p, d, note) { return this._post({ action: 'addAdjust', p: p, d: d, note: note }); };
+  SheetStore.prototype.addAdjust = function (p, d, note, t) { return this._post({ action: 'addAdjust', p: p, d: d, note: note, t: t }); };
   SheetStore.prototype.deleteAdjust = function (id) { return this._post({ action: 'deleteAdjust', id: id }); };
   SheetStore.prototype.resetSeason = function () { return this._post({ action: 'resetSeason' }); };
 
@@ -252,8 +252,8 @@
   LocalStore.prototype.getPin = function (id) { return Promise.resolve(this.data.pins[id] || null); };
   LocalStore.prototype.setPin = function (id, pin) { this.data.pins[id] = pin; this._save(); return Promise.resolve(); };
   LocalStore.prototype.saveSettings = function (s) { this.data.settings = s; this._save(); return Promise.resolve(); };
-  LocalStore.prototype.addAdjust = function (p, d, note) {
-    this.data.adjusts.push({ id: 'j' + Date.now().toString(36) + (++this.n), p: p, d: d, note: note || '', t: Date.now() });
+  LocalStore.prototype.addAdjust = function (p, d, note, t) {
+    this.data.adjusts.push({ id: 'j' + Date.now().toString(36) + (++this.n), p: p, d: d, note: note || '', t: t || Date.now() });
     this._save(); return Promise.resolve();
   };
   LocalStore.prototype.deleteAdjust = function (id) {

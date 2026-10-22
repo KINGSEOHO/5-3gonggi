@@ -226,7 +226,7 @@ function handle_(req) {
       teacher_(req); mustStudent_(req.p);
       var d = Math.round(Number(req.d));
       if (!d || Math.abs(d) > 1000) throw new Error('점수는 -1000 ~ 1000 사이로 넣어 주세요.');
-      var tj = Date.now();
+      var tj = Math.max(Date.now(), Number(req.t) || 0);
       sheet_(TAB.adjust).appendRow(['j' + tj.toString(36) + Math.floor(Math.random() * 1e4).toString(36), stamp_(tj), req.p, d, String(req.note || ''), tj]);
       break;
     case 'deleteAdjust':
