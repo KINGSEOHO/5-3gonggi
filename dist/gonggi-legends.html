@@ -1768,7 +1768,7 @@ window.GG_CONFIG = {
       else if (wr1.value > wr0.value) tags += ' <span class="pill pill-up">' + esc(w.name) + ' ' + wr1.label + '</span>';
       if (lr1.value < lr0.value) tags += ' <span class="pill pill-down">' + esc(l.name) + ' ' + lr1.label + '</span>';
       return '<div class="feed-row">' + headshot(w, 36) + '<div class="feed-text"><b>' + esc(w.name) + '</b> <span class="muted">승리 vs</span> ' + esc(l.name) + tags +
-        '<div class="feed-time">' + ago(m.t) + '</div></div><div style="text-align:right;line-height:1.2"><div class="up">+' + m.gain + '</div><div class="down">−' + m.loss + '</div></div></div>';
+        '<div class="feed-time">' + ago(m.t) + '</div></div><div style="text-align:right;line-height:1.2"><div class="up">+' + m.gain + '</div><div class="down">' + (m.loss ? '−' + m.loss : '±0') + '</div></div></div>';
     }).join('') + '</div>';
   }
 
@@ -1902,7 +1902,7 @@ window.GG_CONFIG = {
         (m.shield ? ' <span class="pill">연패 보호</span>' : '') + (m.edited ? ' <span class="pill">수정됨</span>' : '');
       return '<tr><td class="num muted">' + when + '</td>' +
         '<td><span class="who">' + headshot(w, 28) + '<b>' + esc(w.name) + '</b></span></td><td class="up">승 +' + m.gain + '</td>' +
-        '<td><span class="who">' + headshot(l, 28) + '<b>' + esc(l.name) + '</b></span></td><td class="down">패 −' + m.loss + '</td><td>' + tags + '</td>' +
+        '<td><span class="who">' + headshot(l, 28) + '<b>' + esc(l.name) + '</b></span></td><td class="down">패 ' + (m.loss ? '−' + m.loss : '±0') + '</td><td>' + tags + '</td>' +
         (ui.teacher ? '<td><button class="btn btn-sm" type="button" data-act="edit-match" data-id="' + esc(m.id) + '">수정</button> <button class="btn btn-sm btn-danger" type="button" data-act="del-match" data-id="' + esc(m.id) + '">삭제</button></td>' : '') + '</tr>';
     }).join('');
     var table = sorted().map(function (p, i) {
@@ -2260,7 +2260,7 @@ window.GG_CONFIG = {
       '<div class="result-line"><span class="who">' + headshot(w, 36) + '<span><b>' + esc(w.name) + '</b><span class="sub">' + wr1.label + ' · ' + m.after.a + ' LP' + (m.bonus ? ' · 연승 보너스 +' + m.bonus : '') + '</span></span></span>' +
       '<span class="result-delta up" id="gain-count">+0</span>' + lpBar(wr1, startPct) + '</div>' +
       '<div class="result-line"><span class="who">' + headshot(l, 36) + '<span><b>' + esc(l.name) + '</b><span class="sub">' + lr1.label + ' · ' + m.after.b + ' LP</span></span></span>' +
-      '<span class="result-delta down">−' + m.loss + '</span>' + (m.shield ? '<span class="sub" style="grid-column:1/-1">연패 보호로 절반만 잃었어요</span>' : '') + '</div>' + demote + '</div>' + promo +
+      '<span class="result-delta down">' + (m.loss ? '−' + m.loss : '±0') + '</span>' + (m.shield ? '<span class="sub" style="grid-column:1/-1">연패 보호로 절반만 잃었어요</span>' : '') + '</div>' + demote + '</div>' + promo +
       '<div class="row-actions" style="justify-content:center"><button class="btn btn-ghost" type="button" data-act="undo-now" data-id="' + esc(m.id) + '">잘못 기록했어요</button><button class="btn btn-gold" type="button" data-act="close">계속하기</button></div></div>');
     // LP 숫자 올라가기 + 막대 채우기
     var counter = document.getElementById('gain-count'), start = performance.now();
