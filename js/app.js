@@ -121,6 +121,7 @@
   }
   function placeOf(p) { return sorted().indexOf(p) + 1; }
   function matches() { return (calc && calc.matches) || []; }
+  function adjusts() { return (calc && calc.adjusts) || []; }
   function matchById(id) { var ms = matches(); for (var i = ms.length - 1; i >= 0; i--) if (ms[i].id === id) return ms[i]; return null; }
   function settings() { return (data && data.settings) || GG.DEFAULT_SETTINGS; }
 
@@ -516,8 +517,19 @@
       '<section class="panel gilded section"><h2>전적표</h2><div class="table-wrap"><table><thead><tr><th>순위</th><th>이름</th><th>경기</th><th>승</th><th>패</th><th>승률</th><th>최고 연승</th><th>티어</th></tr></thead><tbody>' + table + '</tbody></table></div></section>' +
       '<section class="panel section"><div class="section-head"><h2>경기 목록 <span class="muted num" style="font-size:15px">' + ms.length + '판</span></h2>' +
       '<select class="input" id="hist-filter" style="width:auto" aria-label="친구별로 보기">' + opts + '</select></div>' +
-      (rows ? '<div class="table-wrap"><table><thead><tr><th>시간</th><th>승자</th><th></th><th>패자</th><th></th><th></th>' + (ui.teacher ? '<th>관리</th>' : '') + '</tr></thead><tbody>' + rows + '</tbody></table></div>' : '<div class="empty">아직 경기 기록이 없어요.</div>') + '</section>';
+      (rows ? '<div class="table-wrap"><table><thead><tr><th>시간</th><th>승자</th><th></th><th>패자</th><th></th><th></th>' + (ui.teacher ? '<th>관리</th>' : '') + '</tr></thead><tbody>' + rows + '</tbody></table></div>' : '<div class="empty">아직 경기 기록이 없어요.</div>') + '</section>' +
+      adjustHistory(f);
   };
+
+  function adjustHistory(f) {
+    var list = adjusts().slice().reverse().filter(function (j) { return f === 'all' || j.p === f; });
+    if (!list.length) return '';
+    return '<section class="panel section"><h2>선생님이 준 LP <span class="muted num" style="font-size:15px">' + list.length + '건</span></h2><div class="feed">' + list.map(function (j) {
+      var p = byId(j.p);
+      return '<div class="feed-row">' + (p ? headshot(p, 30) : '<span></span>') + '<div class="feed-text"><b>' + esc(j.p) + '</b>' + (j.note ? ' <span class="muted">· ' + esc(j.note) + '</span>' : '') +
+        '<div class="feed-time">' + ago(j.t) + '</div></div><span class="' + (j.d > 0 ? 'up' : 'down') + '">' + (j.d > 0 ? '+' : '−') + Math.abs(j.d) + '</span></div>';
+    }).join('') + '</div></section>';
+  }
 
   function openEditMatch(id) {
     var m = matchById(id);
@@ -595,6 +607,7 @@
       '<label class="check"><input type="checkbox" id="set-streak"' + (s.streakBonus ? ' checked' : '') + '> 연승 보너스</label>' +
       '<div class="row-actions"><button class="btn btn-gold" type="button" data-act="save-settings">규칙 저장</button></div>' +
       '</section>' +
+      adjustPanel() +
       (SHEET ? '<section class="panel section"><h2>학생 명단 고치기</h2><p class="muted" style="margin:0;font-size:14px">한 줄에 한 명. 순서가 출석번호가 돼요. 이름을 바꾸면 그 학생의 지난 기록은 새 이름과 이어지지 않으니 주의해 주세요.</p>' +
         '<div class="form-row"><label for="roster-league">반 이름</label><input class="input" id="roster-league" value="' + esc(LEAGUE) + '"></div>' +
         '<textarea class="input" id="roster-text" style="min-height:160px" aria-label="학생 명단">' + esc(ROSTER.map(function (st) { return st.name; }).join('\n')) + '</textarea>' +
@@ -612,6 +625,46 @@
       '<div class="row-actions" style="justify-content:flex-start"><button class="btn btn-danger" type="button" data-act="reset-season">시즌 초기화</button>' +
       (!LIVE ? '<button class="btn btn-ghost" type="button" data-act="reset-demo">예시 다시 채우기</button>' : '') + '</div></section></div></div>';
   };
+
+  /* 선생님이 LP를 직접 더하거나 빼기 */
+  function adjustPanel() {
+    var picks = ui.adjPick || {};
+    var list = players().slice().sort(function (a, b) { return a.no - b.no; });
+    var recent = adjusts().slice().reverse().slice(0, 15);
+    return '<section class="panel gilded section" id="adjust"><h2>LP 직접 주기·빼기</h2>' +
+      '<p class="muted" style="margin:0;font-size:14px">칭찬이나 벌점으로 LP를 바로 더하거나 빼요. 승패 기록과 연승에는 영향이 없고, 기록 탭에 사유와 함께 남아요.</p>' +
+      '<div class="adj-pick">' + list.map(function (p) {
+        return '<label class="adj-who' + (picks[p.id] ? ' on' : '') + '"><input type="checkbox" data-adjpick="' + esc(p.id) + '"' + (picks[p.id] ? ' checked' : '') + '>' + headshot(p, 26) + '<span>' + esc(p.name) + '</span></label>';
+      }).join('') + '</div>' +
+      '<div class="row-actions" style="justify-content:flex-start"><button class="btn btn-sm btn-ghost" type="button" data-act="adj-all">모두 고르기</button><button class="btn btn-sm btn-ghost" type="button" data-act="adj-none">모두 빼기</button></div>' +
+      '<div class="adj-row"><div class="form-row"><label for="adj-d">LP</label><input class="input" id="adj-d" type="number" step="1" value="' + (ui.adjD || 10) + '"></div>' +
+      '<div class="form-row" style="flex:1"><label for="adj-note">사유 (아이들에게 보여요)</label><input class="input" id="adj-note" maxlength="40" placeholder="예: 친구를 도와줌" value="' + esc(ui.adjNote || '') + '"></div></div>' +
+      '<div class="row-actions" style="justify-content:flex-start">' + [5, 10, 20, -5, -10].map(function (n) {
+        return '<button class="btn btn-sm' + (n < 0 ? ' btn-danger' : '') + '" type="button" data-adjquick="' + n + '">' + (n > 0 ? '+' : '−') + Math.abs(n) + '</button>';
+      }).join('') + '<button class="btn btn-gold" type="button" data-act="adj-apply">적용</button></div>' +
+      (recent.length ? '<h3>최근 조정</h3><div class="feed">' + recent.map(function (j) {
+        var p = byId(j.p);
+        return '<div class="feed-row">' + (p ? headshot(p, 30) : '<span></span>') + '<div class="feed-text"><b>' + esc(j.p) + '</b> <span class="' + (j.d > 0 ? 'up' : 'down') + '">' + (j.d > 0 ? '+' : '−') + Math.abs(j.d) + ' LP</span>' +
+          (j.note ? ' <span class="muted">· ' + esc(j.note) + '</span>' : '') + '<div class="feed-time">' + ago(j.t) + '</div></div>' +
+          '<button class="btn btn-sm btn-ghost" type="button" data-act="adj-del" data-id="' + esc(j.id) + '">취소</button></div>';
+      }).join('') + '</div>' : '') + '</section>';
+  }
+  function applyAdjust(ids, d, note) {
+    if (!ids.length) { toast('학생을 먼저 골라 주세요', true); return; }
+    if (!d) { toast('LP를 넣어 주세요', true); return; }
+    if (Math.abs(d) > 1000) { toast('LP는 -1000 ~ 1000 사이로 넣어 주세요', true); return; }
+    ui.busy = true;
+    var jobs = ids.reduce(function (p, id) { return p.then(function () { return store.addAdjust(id, d, note); }); }, Promise.resolve());
+    jobs.then(function () {
+      ui.busy = false; ui.adjPick = {};
+      toast((ids.length === 1 ? ids[0] : ids.length + '명') + '에게 ' + (d > 0 ? '+' : '−') + Math.abs(d) + ' LP' + (note ? ' (' + note + ')' : ''));
+      render();
+    }, fail);
+  }
+  function readAdjustForm() {
+    ui.adjD = parseInt(document.getElementById('adj-d').value, 10) || 0;
+    ui.adjNote = document.getElementById('adj-note').value.trim();
+  }
 
   /* ───────── 창 ───────── */
   function closeLayer() { layer.innerHTML = ''; }
@@ -652,6 +705,9 @@
       '<div class="muted" style="font-size:13px">시즌 최고: ' + peak.label + ' (' + (p.peak || p.points) + ' LP)</div>' +
       '<div class="row-actions" style="justify-content:flex-start"><button class="btn btn-play" type="button" data-act="battle-with" data-id="' + esc(id) + '">PLAY <span class="ko">이 선수로 대결</span></button>' +
       '<button class="btn" type="button" data-act="customize" data-id="' + esc(id) + '">캐릭터 꾸미기</button></div>' +
+      (ui.teacher ? '<div class="row-actions" style="justify-content:flex-start;align-items:center"><span class="label">선생님 LP</span>' + [10, 5, -5, -10].map(function (n) {
+        return '<button class="btn btn-sm' + (n < 0 ? ' btn-danger' : '') + '" type="button" data-adjone="' + esc(id) + '" data-adjv="' + n + '">' + (n > 0 ? '+' : '−') + Math.abs(n) + '</button>';
+      }).join('') + '</div>' : '') +
       '<h3>최근 대결</h3>' + recent + '</div>');
   }
 
@@ -889,10 +945,12 @@
 
   document.addEventListener('click', function (e) {
     if (e.target.matches && e.target.matches('[data-backdrop]')) { closeLayer(); return; }
-    var el = e.target.closest('[data-act],[data-profile],[data-filter],[data-win],[data-opp],[data-pair],[data-pickside],[data-choose],[data-wear],[data-wtab],[data-hist]');
+    var el = e.target.closest('[data-act],[data-profile],[data-filter],[data-win],[data-opp],[data-pair],[data-pickside],[data-choose],[data-wear],[data-wtab],[data-hist],[data-adjquick],[data-adjone]');
     if (!el) return;
     var d = el.dataset;
     if (d.profile) return openProfile(d.profile);
+    if (d.adjquick) { readAdjustForm(); ui.adjD = +d.adjquick; var di = document.getElementById('adj-d'); if (di) di.value = d.adjquick; return; }
+    if (d.adjone) { var aid = d.adjone, dv = +d.adjv; closeLayer(); return applyAdjust([aid], dv, '선생님 ' + (dv > 0 ? '칭찬' : '조정')); }
     if (d.hist) { ui.histFilter = d.hist; render(); var hf = document.getElementById('hist-filter'); if (hf) hf.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
     if (d.filter) { ui.rankFilter = d.filter; return render(); }
     if (d.pickside) { if (personal() && d.pickside === 'a') return; return openPicker(d.pickside); }
@@ -937,6 +995,22 @@
         });
         break;
       case 'login': openPicker('login'); break;
+      case 'adj-all': readAdjustForm(); ui.adjPick = {}; players().forEach(function (p) { ui.adjPick[p.id] = true; }); render(); document.getElementById('adjust').scrollIntoView({ block: 'start' }); break;
+      case 'adj-none': readAdjustForm(); ui.adjPick = {}; render(); document.getElementById('adjust').scrollIntoView({ block: 'start' }); break;
+      case 'adj-apply':
+        if (ui.busy) break;
+        readAdjustForm();
+        var ids = Object.keys(ui.adjPick || {}).filter(function (k) { return ui.adjPick[k]; });
+        var dd = ui.adjD, nn = ui.adjNote;
+        if (ids.length > 1) ask(ids.length + '명에게 ' + (dd > 0 ? '+' : '−') + Math.abs(dd) + ' LP를 줄까요?', esc(nn || '사유 없음'), '적용', function () { applyAdjust(ids, dd, nn); });
+        else applyAdjust(ids, dd, nn);
+        break;
+      case 'adj-del':
+        var aj = adjusts().filter(function (x) { return x.id === d.id; })[0];
+        ask('이 점수 조정을 취소할까요?', aj ? esc(aj.p) + ' ' + (aj.d > 0 ? '+' : '−') + Math.abs(aj.d) + ' LP · ' + esc(aj.note || '') : '', '취소하기', function () {
+          store.deleteAdjust(d.id).then(function () { toast('점수 조정을 취소했어요'); }, fail);
+        });
+        break;
       case 'save-roster':
         var names = document.getElementById('roster-text').value.split(/\n|,/).map(function (x) { return x.trim(); }).filter(Boolean);
         store.setRoster(names, document.getElementById('roster-league').value.trim()).then(function () { toast('명단을 저장했어요'); }, fail);
@@ -1102,6 +1176,8 @@
   });
 
   document.addEventListener('change', function (e) {
+    var pick = e.target.dataset && e.target.dataset.adjpick;
+    if (pick) { ui.adjPick = ui.adjPick || {}; ui.adjPick[pick] = e.target.checked; e.target.parentElement.classList.toggle('on', e.target.checked); return; }
     var bid = e.target.dataset && e.target.dataset.boost;
     if (bid) {
       var bl = (settings().boost || []).filter(function (x) { return x !== bid; });
@@ -1158,7 +1234,7 @@
       LEAGUE = d.league || LEAGUE; SEASON = d.season || SEASON;
       if (me && !ROSTER.some(function (st) { return st.name === me; })) { me = null; }
     }
-    calc = GG.replay(ROSTER.map(function (st) { return st.name; }), d.matches, d.settings);
+    calc = GG.replay(ROSTER.map(function (st) { return st.name; }), d.matches, d.settings, d.adjusts);
     render();
     fresh = fresh.filter(function (m) { return !wantResult[m.id]; }).map(function (m) { return matchById(m.id); }).filter(Boolean);
     if (!showWanted() && fresh.length && !layer.querySelector('.result')) showResult(fresh[fresh.length - 1]);

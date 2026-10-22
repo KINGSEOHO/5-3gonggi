@@ -551,6 +551,16 @@ td { padding: 9px 10px; border-bottom: 1px solid rgba(38, 49, 73, .7); white-spa
   color: #1a1408; background: linear-gradient(180deg, var(--gold-hi), var(--gold)); clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
 }
 textarea.code { min-height: 140px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; white-space: pre; overflow: auto; }
+
+/* ── 선생님 LP 조정 ── */
+.adj-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; }
+.adj-who { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border: 1px solid var(--line); background: var(--void); cursor: pointer; font-size: 13px; font-weight: 700; min-width: 0; }
+.adj-who span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.adj-who input { position: absolute; opacity: 0; pointer-events: none; }
+.adj-who.on { border-color: var(--gold); box-shadow: inset 0 0 12px rgba(200, 170, 110, .2); color: var(--gold-hi); }
+.adj-who:focus-within { outline: 2px solid var(--hex); }
+.adj-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.adj-row .form-row:first-child { width: 110px; }
 </style>
 </head>
 <body>
@@ -807,28 +817,40 @@ window.GG_CONFIG = {
 
   /* 경기 기록(원본)을 시간 순서대로 다시 계산해 모든 선수 점수와 경기별 결과를 만든다.
      기록을 고치거나 지워도 이것만 다시 돌리면 된다. */
-  function replay(ids, matches, settings) {
+  /* adjusts: 선생님이 직접 더하거나 뺀 LP [{id, p: 이름, d: +/-LP, note, t}]. 승패·연승에는 영향 없음 */
+  function replay(ids, matches, settings, adjusts) {
     var s = Object.assign({}, DEFAULT_SETTINGS, settings || {});
     var P = {};
     function get(id) {
-      if (!P[id]) P[id] = { id: id, points: s.startPoints, wins: 0, losses: 0, streak: 0, bestStreak: 0, peak: s.startPoints };
+      if (!P[id]) P[id] = { id: id, points: s.startPoints, wins: 0, losses: 0, streak: 0, bestStreak: 0, peak: s.startPoints, adjusted: 0 };
       return P[id];
     }
     (ids || []).forEach(get);
-    var list = (matches || []).slice().sort(function (x, y) { return x.t - y.t || (x.id < y.id ? -1 : 1); });
-    var results = list.map(function (m) {
+    var events = (matches || []).map(function (m) { return { k: 'm', v: m }; })
+      .concat((adjusts || []).map(function (a) { return { k: 'j', v: a }; }))
+      .sort(function (x, y) { return x.v.t - y.v.t || (x.v.id < y.v.id ? -1 : 1); });
+    var results = [], adj = [];
+    events.forEach(function (e) {
+      var m = e.v;
+      if (e.k === 'j') {
+        var p = get(m.p), before = p.points;
+        p.points = Math.max(0, p.points + (Number(m.d) || 0));
+        p.peak = Math.max(p.peak, p.points);
+        p.adjusted += p.points - before;
+        adj.push({ id: m.id, p: m.p, d: Number(m.d) || 0, note: m.note || '', t: m.t, before: before, after: p.points });
+        return;
+      }
       var w = get(m.a), l = get(m.b);
       var out = applyResult(w, l, s);
-      var res = {
+      results.push({
         id: m.id, a: m.a, b: m.b, t: m.t, by: m.by, edited: m.edited,
         gain: out.result.total, bonus: out.result.bonus, loss: out.result.loss, shield: out.result.shield, upset: out.result.upset,
         before: { a: { points: w.points, streak: w.streak }, b: { points: l.points, streak: l.streak } },
         after: { a: out.winner.points, b: out.loser.points }
-      };
+      });
       Object.assign(w, out.winner); Object.assign(l, out.loser);
-      return res;
     });
-    return { players: P, matches: results };
+    return { players: P, matches: results, adjusts: adj };
   }
 
   var api = {
@@ -853,6 +875,7 @@ window.GG_CONFIG = {
  *   record(winnerId, loserId, opts)     opts.consume: 확인한 결과 신고 id, opts.cleanup: 같이 지울 신고 id들, opts.by: 기록한 사람
  *   updateMatch(id, fields) / deleteMatch(id)
  *   addReport(winnerId, loserId) / removeReport(id)
+ *   addAdjust(이름, ±LP, 사유) / deleteAdjust(id)   선생님이 직접 더하고 빼는 LP
  *   updatePlayer(id, fields), hasPin(id) / checkPin(id, pin) / setPin(id, pin), checkTeacher(pw), saveSettings(s), resetSeason()
  */
 (function (root) {
@@ -873,9 +896,9 @@ window.GG_CONFIG = {
   }
   FirebaseStore.prototype.subscribe = function (cb, onError) {
     var db = this.db;
-    var data = { players: {}, matches: [], settings: Object.assign({}, GG.DEFAULT_SETTINGS), reports: [] };
-    var ready = { p: false, m: false, s: false, r: false };
-    function emit() { if (ready.p && ready.m && ready.s && ready.r) cb(data); }
+    var data = { players: {}, matches: [], settings: Object.assign({}, GG.DEFAULT_SETTINGS), reports: [], adjusts: [] };
+    var ready = { p: false, m: false, s: false, r: false, j: false };
+    function emit() { if (ready.p && ready.m && ready.s && ready.r && ready.j) cb(data); }
     var fail = function (e) { if (onError) onError(e); };
     db.collection('gonggi_players').onSnapshot(function (snap) {
       data.players = {};
@@ -894,7 +917,15 @@ window.GG_CONFIG = {
       data.reports = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
       ready.r = true; emit();
     }, fail);
+    db.collection('gonggi_adjust').onSnapshot(function (snap) {
+      data.adjusts = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+      ready.j = true; emit();
+    }, fail);
   };
+  FirebaseStore.prototype.addAdjust = function (p, d, note) {
+    return this.db.collection('gonggi_adjust').doc().set({ p: p, d: d, note: note || '', t: Date.now() });
+  };
+  FirebaseStore.prototype.deleteAdjust = function (id) { return this.db.collection('gonggi_adjust').doc(id).delete(); };
   FirebaseStore.prototype.record = function (winnerId, loserId, opts) {
     opts = opts || {};
     var db = this.db, reps = db.collection('gonggi_reports');
@@ -950,7 +981,7 @@ window.GG_CONFIG = {
         return Promise.all(jobs);
       });
     }
-    return Promise.all([wipe('gonggi_matches'), wipe('gonggi_reports')]);
+    return Promise.all([wipe('gonggi_matches'), wipe('gonggi_reports'), wipe('gonggi_adjust')]);
   };
 
   FirebaseStore.prototype.hasPin = function (id) { return this.getPin(id).then(function (p) { return !!p; }); };
@@ -1029,6 +1060,8 @@ window.GG_CONFIG = {
   SheetStore.prototype.saveSettings = function (st) { return this._post({ action: 'saveSettings', settings: st }); };
   SheetStore.prototype.setRoster = function (names, league) { return this._post({ action: 'setRoster', students: names, league: league }); };
   SheetStore.prototype.resetPin = function (id) { return this._post({ action: 'resetPin', id: id }); };
+  SheetStore.prototype.addAdjust = function (p, d, note) { return this._post({ action: 'addAdjust', p: p, d: d, note: note }); };
+  SheetStore.prototype.deleteAdjust = function (id) { return this._post({ action: 'deleteAdjust', id: id }); };
   SheetStore.prototype.resetSeason = function () { return this._post({ action: 'resetSeason' }); };
 
   /* ───────── 체험: 이 브라우저에만 ───────── */
@@ -1043,12 +1076,13 @@ window.GG_CONFIG = {
     this.data.settings = Object.assign({}, GG.DEFAULT_SETTINGS, this.data.settings || {});
     this.data.pins = this.data.pins || {};
     this.data.reports = this.data.reports || {};
+    this.data.adjusts = this.data.adjusts || [];
     this.n = 0;
   }
   LocalStore.prototype._save = function () {
     try { localStorage.setItem(LOCAL_KEY, JSON.stringify(this.data)); } catch (e) { /* 무시 */ }
     var R = this.data.reports;
-    var snap = { players: this.data.players, matches: this.data.matches.slice(), settings: this.data.settings,
+    var snap = { players: this.data.players, matches: this.data.matches.slice(), settings: this.data.settings, adjusts: this.data.adjusts.slice(),
       reports: Object.keys(R).map(function (id) { return Object.assign({ id: id }, R[id]); }) };
     this.listeners.forEach(function (cb) { cb(snap); });
   };
@@ -1084,7 +1118,15 @@ window.GG_CONFIG = {
   LocalStore.prototype.getPin = function (id) { return Promise.resolve(this.data.pins[id] || null); };
   LocalStore.prototype.setPin = function (id, pin) { this.data.pins[id] = pin; this._save(); return Promise.resolve(); };
   LocalStore.prototype.saveSettings = function (s) { this.data.settings = s; this._save(); return Promise.resolve(); };
-  LocalStore.prototype.resetSeason = function () { this.data.matches = []; this.data.reports = {}; this._save(); return Promise.resolve(); };
+  LocalStore.prototype.addAdjust = function (p, d, note) {
+    this.data.adjusts.push({ id: 'j' + Date.now().toString(36) + (++this.n), p: p, d: d, note: note || '', t: Date.now() });
+    this._save(); return Promise.resolve();
+  };
+  LocalStore.prototype.deleteAdjust = function (id) {
+    this.data.adjusts = this.data.adjusts.filter(function (a) { return a.id !== id; });
+    this._save(); return Promise.resolve();
+  };
+  LocalStore.prototype.resetSeason = function () { this.data.matches = []; this.data.reports = {}; this.data.adjusts = []; this._save(); return Promise.resolve(); };
   LocalStore.prototype.hasPin = function (id) { return Promise.resolve(!!this.data.pins[id]); };
   LocalStore.prototype.checkPin = function (id, pin) { return Promise.resolve((!!this.data.pins[id] && this.data.pins[id] === pin) || pin === this.teacherPw); };
   LocalStore.prototype.checkTeacher = function (pw) { return Promise.resolve(pw === this.teacherPw); };
@@ -1441,6 +1483,7 @@ window.GG_CONFIG = {
   }
   function placeOf(p) { return sorted().indexOf(p) + 1; }
   function matches() { return (calc && calc.matches) || []; }
+  function adjusts() { return (calc && calc.adjusts) || []; }
   function matchById(id) { var ms = matches(); for (var i = ms.length - 1; i >= 0; i--) if (ms[i].id === id) return ms[i]; return null; }
   function settings() { return (data && data.settings) || GG.DEFAULT_SETTINGS; }
 
@@ -1836,8 +1879,19 @@ window.GG_CONFIG = {
       '<section class="panel gilded section"><h2>전적표</h2><div class="table-wrap"><table><thead><tr><th>순위</th><th>이름</th><th>경기</th><th>승</th><th>패</th><th>승률</th><th>최고 연승</th><th>티어</th></tr></thead><tbody>' + table + '</tbody></table></div></section>' +
       '<section class="panel section"><div class="section-head"><h2>경기 목록 <span class="muted num" style="font-size:15px">' + ms.length + '판</span></h2>' +
       '<select class="input" id="hist-filter" style="width:auto" aria-label="친구별로 보기">' + opts + '</select></div>' +
-      (rows ? '<div class="table-wrap"><table><thead><tr><th>시간</th><th>승자</th><th></th><th>패자</th><th></th><th></th>' + (ui.teacher ? '<th>관리</th>' : '') + '</tr></thead><tbody>' + rows + '</tbody></table></div>' : '<div class="empty">아직 경기 기록이 없어요.</div>') + '</section>';
+      (rows ? '<div class="table-wrap"><table><thead><tr><th>시간</th><th>승자</th><th></th><th>패자</th><th></th><th></th>' + (ui.teacher ? '<th>관리</th>' : '') + '</tr></thead><tbody>' + rows + '</tbody></table></div>' : '<div class="empty">아직 경기 기록이 없어요.</div>') + '</section>' +
+      adjustHistory(f);
   };
+
+  function adjustHistory(f) {
+    var list = adjusts().slice().reverse().filter(function (j) { return f === 'all' || j.p === f; });
+    if (!list.length) return '';
+    return '<section class="panel section"><h2>선생님이 준 LP <span class="muted num" style="font-size:15px">' + list.length + '건</span></h2><div class="feed">' + list.map(function (j) {
+      var p = byId(j.p);
+      return '<div class="feed-row">' + (p ? headshot(p, 30) : '<span></span>') + '<div class="feed-text"><b>' + esc(j.p) + '</b>' + (j.note ? ' <span class="muted">· ' + esc(j.note) + '</span>' : '') +
+        '<div class="feed-time">' + ago(j.t) + '</div></div><span class="' + (j.d > 0 ? 'up' : 'down') + '">' + (j.d > 0 ? '+' : '−') + Math.abs(j.d) + '</span></div>';
+    }).join('') + '</div></section>';
+  }
 
   function openEditMatch(id) {
     var m = matchById(id);
@@ -1915,6 +1969,7 @@ window.GG_CONFIG = {
       '<label class="check"><input type="checkbox" id="set-streak"' + (s.streakBonus ? ' checked' : '') + '> 연승 보너스</label>' +
       '<div class="row-actions"><button class="btn btn-gold" type="button" data-act="save-settings">규칙 저장</button></div>' +
       '</section>' +
+      adjustPanel() +
       (SHEET ? '<section class="panel section"><h2>학생 명단 고치기</h2><p class="muted" style="margin:0;font-size:14px">한 줄에 한 명. 순서가 출석번호가 돼요. 이름을 바꾸면 그 학생의 지난 기록은 새 이름과 이어지지 않으니 주의해 주세요.</p>' +
         '<div class="form-row"><label for="roster-league">반 이름</label><input class="input" id="roster-league" value="' + esc(LEAGUE) + '"></div>' +
         '<textarea class="input" id="roster-text" style="min-height:160px" aria-label="학생 명단">' + esc(ROSTER.map(function (st) { return st.name; }).join('\n')) + '</textarea>' +
@@ -1932,6 +1987,46 @@ window.GG_CONFIG = {
       '<div class="row-actions" style="justify-content:flex-start"><button class="btn btn-danger" type="button" data-act="reset-season">시즌 초기화</button>' +
       (!LIVE ? '<button class="btn btn-ghost" type="button" data-act="reset-demo">예시 다시 채우기</button>' : '') + '</div></section></div></div>';
   };
+
+  /* 선생님이 LP를 직접 더하거나 빼기 */
+  function adjustPanel() {
+    var picks = ui.adjPick || {};
+    var list = players().slice().sort(function (a, b) { return a.no - b.no; });
+    var recent = adjusts().slice().reverse().slice(0, 15);
+    return '<section class="panel gilded section" id="adjust"><h2>LP 직접 주기·빼기</h2>' +
+      '<p class="muted" style="margin:0;font-size:14px">칭찬이나 벌점으로 LP를 바로 더하거나 빼요. 승패 기록과 연승에는 영향이 없고, 기록 탭에 사유와 함께 남아요.</p>' +
+      '<div class="adj-pick">' + list.map(function (p) {
+        return '<label class="adj-who' + (picks[p.id] ? ' on' : '') + '"><input type="checkbox" data-adjpick="' + esc(p.id) + '"' + (picks[p.id] ? ' checked' : '') + '>' + headshot(p, 26) + '<span>' + esc(p.name) + '</span></label>';
+      }).join('') + '</div>' +
+      '<div class="row-actions" style="justify-content:flex-start"><button class="btn btn-sm btn-ghost" type="button" data-act="adj-all">모두 고르기</button><button class="btn btn-sm btn-ghost" type="button" data-act="adj-none">모두 빼기</button></div>' +
+      '<div class="adj-row"><div class="form-row"><label for="adj-d">LP</label><input class="input" id="adj-d" type="number" step="1" value="' + (ui.adjD || 10) + '"></div>' +
+      '<div class="form-row" style="flex:1"><label for="adj-note">사유 (아이들에게 보여요)</label><input class="input" id="adj-note" maxlength="40" placeholder="예: 친구를 도와줌" value="' + esc(ui.adjNote || '') + '"></div></div>' +
+      '<div class="row-actions" style="justify-content:flex-start">' + [5, 10, 20, -5, -10].map(function (n) {
+        return '<button class="btn btn-sm' + (n < 0 ? ' btn-danger' : '') + '" type="button" data-adjquick="' + n + '">' + (n > 0 ? '+' : '−') + Math.abs(n) + '</button>';
+      }).join('') + '<button class="btn btn-gold" type="button" data-act="adj-apply">적용</button></div>' +
+      (recent.length ? '<h3>최근 조정</h3><div class="feed">' + recent.map(function (j) {
+        var p = byId(j.p);
+        return '<div class="feed-row">' + (p ? headshot(p, 30) : '<span></span>') + '<div class="feed-text"><b>' + esc(j.p) + '</b> <span class="' + (j.d > 0 ? 'up' : 'down') + '">' + (j.d > 0 ? '+' : '−') + Math.abs(j.d) + ' LP</span>' +
+          (j.note ? ' <span class="muted">· ' + esc(j.note) + '</span>' : '') + '<div class="feed-time">' + ago(j.t) + '</div></div>' +
+          '<button class="btn btn-sm btn-ghost" type="button" data-act="adj-del" data-id="' + esc(j.id) + '">취소</button></div>';
+      }).join('') + '</div>' : '') + '</section>';
+  }
+  function applyAdjust(ids, d, note) {
+    if (!ids.length) { toast('학생을 먼저 골라 주세요', true); return; }
+    if (!d) { toast('LP를 넣어 주세요', true); return; }
+    if (Math.abs(d) > 1000) { toast('LP는 -1000 ~ 1000 사이로 넣어 주세요', true); return; }
+    ui.busy = true;
+    var jobs = ids.reduce(function (p, id) { return p.then(function () { return store.addAdjust(id, d, note); }); }, Promise.resolve());
+    jobs.then(function () {
+      ui.busy = false; ui.adjPick = {};
+      toast((ids.length === 1 ? ids[0] : ids.length + '명') + '에게 ' + (d > 0 ? '+' : '−') + Math.abs(d) + ' LP' + (note ? ' (' + note + ')' : ''));
+      render();
+    }, fail);
+  }
+  function readAdjustForm() {
+    ui.adjD = parseInt(document.getElementById('adj-d').value, 10) || 0;
+    ui.adjNote = document.getElementById('adj-note').value.trim();
+  }
 
   /* ───────── 창 ───────── */
   function closeLayer() { layer.innerHTML = ''; }
@@ -1972,6 +2067,9 @@ window.GG_CONFIG = {
       '<div class="muted" style="font-size:13px">시즌 최고: ' + peak.label + ' (' + (p.peak || p.points) + ' LP)</div>' +
       '<div class="row-actions" style="justify-content:flex-start"><button class="btn btn-play" type="button" data-act="battle-with" data-id="' + esc(id) + '">PLAY <span class="ko">이 선수로 대결</span></button>' +
       '<button class="btn" type="button" data-act="customize" data-id="' + esc(id) + '">캐릭터 꾸미기</button></div>' +
+      (ui.teacher ? '<div class="row-actions" style="justify-content:flex-start;align-items:center"><span class="label">선생님 LP</span>' + [10, 5, -5, -10].map(function (n) {
+        return '<button class="btn btn-sm' + (n < 0 ? ' btn-danger' : '') + '" type="button" data-adjone="' + esc(id) + '" data-adjv="' + n + '">' + (n > 0 ? '+' : '−') + Math.abs(n) + '</button>';
+      }).join('') + '</div>' : '') +
       '<h3>최근 대결</h3>' + recent + '</div>');
   }
 
@@ -2209,10 +2307,12 @@ window.GG_CONFIG = {
 
   document.addEventListener('click', function (e) {
     if (e.target.matches && e.target.matches('[data-backdrop]')) { closeLayer(); return; }
-    var el = e.target.closest('[data-act],[data-profile],[data-filter],[data-win],[data-opp],[data-pair],[data-pickside],[data-choose],[data-wear],[data-wtab],[data-hist]');
+    var el = e.target.closest('[data-act],[data-profile],[data-filter],[data-win],[data-opp],[data-pair],[data-pickside],[data-choose],[data-wear],[data-wtab],[data-hist],[data-adjquick],[data-adjone]');
     if (!el) return;
     var d = el.dataset;
     if (d.profile) return openProfile(d.profile);
+    if (d.adjquick) { readAdjustForm(); ui.adjD = +d.adjquick; var di = document.getElementById('adj-d'); if (di) di.value = d.adjquick; return; }
+    if (d.adjone) { var aid = d.adjone, dv = +d.adjv; closeLayer(); return applyAdjust([aid], dv, '선생님 ' + (dv > 0 ? '칭찬' : '조정')); }
     if (d.hist) { ui.histFilter = d.hist; render(); var hf = document.getElementById('hist-filter'); if (hf) hf.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
     if (d.filter) { ui.rankFilter = d.filter; return render(); }
     if (d.pickside) { if (personal() && d.pickside === 'a') return; return openPicker(d.pickside); }
@@ -2257,6 +2357,22 @@ window.GG_CONFIG = {
         });
         break;
       case 'login': openPicker('login'); break;
+      case 'adj-all': readAdjustForm(); ui.adjPick = {}; players().forEach(function (p) { ui.adjPick[p.id] = true; }); render(); document.getElementById('adjust').scrollIntoView({ block: 'start' }); break;
+      case 'adj-none': readAdjustForm(); ui.adjPick = {}; render(); document.getElementById('adjust').scrollIntoView({ block: 'start' }); break;
+      case 'adj-apply':
+        if (ui.busy) break;
+        readAdjustForm();
+        var ids = Object.keys(ui.adjPick || {}).filter(function (k) { return ui.adjPick[k]; });
+        var dd = ui.adjD, nn = ui.adjNote;
+        if (ids.length > 1) ask(ids.length + '명에게 ' + (dd > 0 ? '+' : '−') + Math.abs(dd) + ' LP를 줄까요?', esc(nn || '사유 없음'), '적용', function () { applyAdjust(ids, dd, nn); });
+        else applyAdjust(ids, dd, nn);
+        break;
+      case 'adj-del':
+        var aj = adjusts().filter(function (x) { return x.id === d.id; })[0];
+        ask('이 점수 조정을 취소할까요?', aj ? esc(aj.p) + ' ' + (aj.d > 0 ? '+' : '−') + Math.abs(aj.d) + ' LP · ' + esc(aj.note || '') : '', '취소하기', function () {
+          store.deleteAdjust(d.id).then(function () { toast('점수 조정을 취소했어요'); }, fail);
+        });
+        break;
       case 'save-roster':
         var names = document.getElementById('roster-text').value.split(/\n|,/).map(function (x) { return x.trim(); }).filter(Boolean);
         store.setRoster(names, document.getElementById('roster-league').value.trim()).then(function () { toast('명단을 저장했어요'); }, fail);
@@ -2422,6 +2538,8 @@ window.GG_CONFIG = {
   });
 
   document.addEventListener('change', function (e) {
+    var pick = e.target.dataset && e.target.dataset.adjpick;
+    if (pick) { ui.adjPick = ui.adjPick || {}; ui.adjPick[pick] = e.target.checked; e.target.parentElement.classList.toggle('on', e.target.checked); return; }
     var bid = e.target.dataset && e.target.dataset.boost;
     if (bid) {
       var bl = (settings().boost || []).filter(function (x) { return x !== bid; });
@@ -2478,7 +2596,7 @@ window.GG_CONFIG = {
       LEAGUE = d.league || LEAGUE; SEASON = d.season || SEASON;
       if (me && !ROSTER.some(function (st) { return st.name === me; })) { me = null; }
     }
-    calc = GG.replay(ROSTER.map(function (st) { return st.name; }), d.matches, d.settings);
+    calc = GG.replay(ROSTER.map(function (st) { return st.name; }), d.matches, d.settings, d.adjusts);
     render();
     fresh = fresh.filter(function (m) { return !wantResult[m.id]; }).map(function (m) { return matchById(m.id); }).filter(Boolean);
     if (!showWanted() && fresh.length && !layer.querySelector('.result')) showResult(fresh[fresh.length - 1]);

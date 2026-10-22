@@ -11,14 +11,15 @@
  * 경기 기록은 '경기' 탭에서 직접 보거나 고칠 수 있어요(고친 내용은 앱 점수에 바로 반영돼요).
  */
 
-var TAB = { students: '학생', matches: '경기', players: '선수', pins: '비밀번호', reports: '확인요청', config: '설정' };
+var TAB = { students: '학생', matches: '경기', players: '선수', pins: '비밀번호', reports: '확인요청', config: '설정', adjust: '점수조정' };
 var HEAD = {
   학생: ['번호', '이름'],
   경기: ['id', '날짜', '승자', '패자', 't', '기록한 사람', '수정'],
   선수: ['이름', '꾸미기', '쉬는중'],
   비밀번호: ['이름', '비밀번호'],
   확인요청: ['id', '승자', '패자', 't'],
-  설정: ['항목', '값']
+  설정: ['항목', '값'],
+  점수조정: ['id', '날짜', '이름', '점수', '사유', 't']
 };
 
 function doGet(e) {
@@ -103,12 +104,16 @@ function state_() {
   });
   var reports = rows_(TAB.reports).filter(function (r) { return r[0]; })
     .map(function (r) { return { id: String(r[0]), winner: String(r[1]), loser: String(r[2]), t: Number(r[3]) }; });
+  var adjusts = rows_(TAB.adjust).filter(function (r) { return r[0] && r[2]; }).map(function (r) {
+    var t = Number(r[5]) || (r[1] instanceof Date ? r[1].getTime() : Date.parse(r[1])) || 0;
+    return { id: String(r[0]), p: String(r[2]), d: Number(r[3]) || 0, note: String(r[4] || ''), t: t };
+  });
   var pinSet = rows_(TAB.pins).filter(function (r) { return r[0] && String(r[1]); }).map(function (r) { return String(r[0]); });
   var settings = {};
   try { settings = JSON.parse(c['규칙'] || '{}'); } catch (e) { settings = {}; }
   return {
     ready: ready, v: version_(), league: c['반이름'] || '우리 반 리그', season: Number(c['시즌']) || 1,
-    roster: roster, players: players, matches: matches, reports: reports, pinSet: pinSet, settings: settings
+    roster: roster, players: players, matches: matches, reports: reports, adjusts: adjusts, pinSet: pinSet, settings: settings
   };
 }
 
@@ -139,7 +144,7 @@ function handle_(req) {
     setConfig_('반이름', String(req.league || '우리 반 리그'));
     setConfig_('시즌', 1);
     setConfig_('선생님비밀번호', String(req.teacherPw));
-    [TAB.matches, TAB.players, TAB.pins, TAB.reports].forEach(sheet_);
+    [TAB.matches, TAB.players, TAB.pins, TAB.reports, TAB.adjust].forEach(sheet_);
     bump_();
     return {};
   }
@@ -217,6 +222,18 @@ function handle_(req) {
       var drow = findRow_(TAB.matches, 0, req.id);
       if (drow) sheet_(TAB.matches).deleteRow(drow);
       break;
+    case 'addAdjust':
+      teacher_(req); mustStudent_(req.p);
+      var d = Math.round(Number(req.d));
+      if (!d || Math.abs(d) > 1000) throw new Error('점수는 -1000 ~ 1000 사이로 넣어 주세요.');
+      var tj = Date.now();
+      sheet_(TAB.adjust).appendRow(['j' + tj.toString(36) + Math.floor(Math.random() * 1e4).toString(36), stamp_(tj), req.p, d, String(req.note || ''), tj]);
+      break;
+    case 'deleteAdjust':
+      teacher_(req);
+      var jr = findRow_(TAB.adjust, 0, req.id);
+      if (jr) sheet_(TAB.adjust).deleteRow(jr);
+      break;
     case 'saveSettings':
       teacher_(req);
       setConfig_('규칙', JSON.stringify(req.settings || {}));
@@ -232,7 +249,7 @@ function handle_(req) {
       break;
     case 'resetSeason':
       teacher_(req);
-      [TAB.matches, TAB.reports].forEach(function (name) {
+      [TAB.matches, TAB.reports, TAB.adjust].forEach(function (name) {
         var s = sheet_(name);
         if (s.getLastRow() > 1) s.deleteRows(2, s.getLastRow() - 1);
       });

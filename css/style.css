@@ -539,3 +539,13 @@ td { padding: 9px 10px; border-bottom: 1px solid rgba(38, 49, 73, .7); white-spa
   color: #1a1408; background: linear-gradient(180deg, var(--gold-hi), var(--gold)); clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
 }
 textarea.code { min-height: 140px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; white-space: pre; overflow: auto; }
+
+/* ── 선생님 LP 조정 ── */
+.adj-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; }
+.adj-who { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border: 1px solid var(--line); background: var(--void); cursor: pointer; font-size: 13px; font-weight: 700; min-width: 0; }
+.adj-who span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.adj-who input { position: absolute; opacity: 0; pointer-events: none; }
+.adj-who.on { border-color: var(--gold); box-shadow: inset 0 0 12px rgba(200, 170, 110, .2); color: var(--gold-hi); }
+.adj-who:focus-within { outline: 2px solid var(--hex); }
+.adj-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.adj-row .form-row:first-child { width: 110px; }

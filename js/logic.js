@@ -197,28 +197,40 @@
 
   /* 경기 기록(원본)을 시간 순서대로 다시 계산해 모든 선수 점수와 경기별 결과를 만든다.
      기록을 고치거나 지워도 이것만 다시 돌리면 된다. */
-  function replay(ids, matches, settings) {
+  /* adjusts: 선생님이 직접 더하거나 뺀 LP [{id, p: 이름, d: +/-LP, note, t}]. 승패·연승에는 영향 없음 */
+  function replay(ids, matches, settings, adjusts) {
     var s = Object.assign({}, DEFAULT_SETTINGS, settings || {});
     var P = {};
     function get(id) {
-      if (!P[id]) P[id] = { id: id, points: s.startPoints, wins: 0, losses: 0, streak: 0, bestStreak: 0, peak: s.startPoints };
+      if (!P[id]) P[id] = { id: id, points: s.startPoints, wins: 0, losses: 0, streak: 0, bestStreak: 0, peak: s.startPoints, adjusted: 0 };
       return P[id];
     }
     (ids || []).forEach(get);
-    var list = (matches || []).slice().sort(function (x, y) { return x.t - y.t || (x.id < y.id ? -1 : 1); });
-    var results = list.map(function (m) {
+    var events = (matches || []).map(function (m) { return { k: 'm', v: m }; })
+      .concat((adjusts || []).map(function (a) { return { k: 'j', v: a }; }))
+      .sort(function (x, y) { return x.v.t - y.v.t || (x.v.id < y.v.id ? -1 : 1); });
+    var results = [], adj = [];
+    events.forEach(function (e) {
+      var m = e.v;
+      if (e.k === 'j') {
+        var p = get(m.p), before = p.points;
+        p.points = Math.max(0, p.points + (Number(m.d) || 0));
+        p.peak = Math.max(p.peak, p.points);
+        p.adjusted += p.points - before;
+        adj.push({ id: m.id, p: m.p, d: Number(m.d) || 0, note: m.note || '', t: m.t, before: before, after: p.points });
+        return;
+      }
       var w = get(m.a), l = get(m.b);
       var out = applyResult(w, l, s);
-      var res = {
+      results.push({
         id: m.id, a: m.a, b: m.b, t: m.t, by: m.by, edited: m.edited,
         gain: out.result.total, bonus: out.result.bonus, loss: out.result.loss, shield: out.result.shield, upset: out.result.upset,
         before: { a: { points: w.points, streak: w.streak }, b: { points: l.points, streak: l.streak } },
         after: { a: out.winner.points, b: out.loser.points }
-      };
+      });
       Object.assign(w, out.winner); Object.assign(l, out.loser);
-      return res;
     });
-    return { players: P, matches: results };
+    return { players: P, matches: results, adjusts: adj };
   }
 
   var api = {

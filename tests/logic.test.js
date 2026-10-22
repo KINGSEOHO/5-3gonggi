@@ -82,3 +82,15 @@ test('추천에 자주: 고른 친구가 점수가 멀어도 추천에 나온다
   // 자기 자신은 추천하지 않음
   assert.ok(!all(GG.recommend(s[5], s, [], { boost: ['x'] })).includes('x'));
 });
+
+test('선생님 LP 조정: 점수만 바뀌고 승패·연승은 그대로, 0 아래로 안 감', () => {
+  const ms = [{ id: '1', a: 'x', b: 'y', t: 1 }, { id: '2', a: 'x', b: 'y', t: 3 }];
+  const base = GG.replay(['x', 'y'], ms);
+  const r = GG.replay(['x', 'y'], ms, {}, [{ id: 'j1', p: 'y', d: 50, note: '칭찬', t: 2 }, { id: 'j2', p: 'x', d: -9999, t: 4 }]);
+  assert.strictEqual(r.players.x.points, 0);
+  assert.strictEqual(r.players.x.wins, 2);
+  assert.strictEqual(r.players.x.streak, 2);
+  assert.ok(r.players.y.points > base.players.y.points);
+  assert.strictEqual(r.adjusts[0].before + 50, r.adjusts[0].after);
+  assert.strictEqual(r.matches.length, 2);
+});

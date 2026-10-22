@@ -73,3 +73,18 @@ test('꾸미기와 명단 바꾸기, 새 시즌', () => {
   const s = g.get('state');
   assert.strictEqual(s.matches.length, 0); assert.strictEqual(s.season, 2); assert.strictEqual(s.players['가'].face, 'cool');
 });
+
+test('LP 조정은 선생님만, 시트에 남고 새 시즌에 지워진다', () => {
+  const g = setup();
+  assert.strictEqual(g.post({ action: 'addAdjust', p: '가', d: 10 }).ok, false);
+  assert.ok(g.post({ action: 'addAdjust', p: '가', d: 10, note: '칭찬', teacherPw: 'abcd' }).ok);
+  assert.strictEqual(g.post({ action: 'addAdjust', p: '없음', d: 10, teacherPw: 'abcd' }).ok, false);
+  let s = g.get('state');
+  assert.strictEqual(s.adjusts.length, 1);
+  assert.strictEqual(s.adjusts[0].d, 10); assert.strictEqual(s.adjusts[0].note, '칭찬');
+  assert.ok(g.post({ action: 'deleteAdjust', id: s.adjusts[0].id, teacherPw: 'abcd' }).ok);
+  assert.strictEqual(g.get('state').adjusts.length, 0);
+  g.post({ action: 'addAdjust', p: '가', d: -5, teacherPw: 'abcd' });
+  g.post({ action: 'resetSeason', teacherPw: 'abcd' });
+  assert.strictEqual(g.get('state').adjusts.length, 0);
+});

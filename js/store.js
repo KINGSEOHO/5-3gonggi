@@ -9,6 +9,7 @@
  *   record(winnerId, loserId, opts)     opts.consume: 확인한 결과 신고 id, opts.cleanup: 같이 지울 신고 id들, opts.by: 기록한 사람
  *   updateMatch(id, fields) / deleteMatch(id)
  *   addReport(winnerId, loserId) / removeReport(id)
+ *   addAdjust(이름, ±LP, 사유) / deleteAdjust(id)   선생님이 직접 더하고 빼는 LP
  *   updatePlayer(id, fields), hasPin(id) / checkPin(id, pin) / setPin(id, pin), checkTeacher(pw), saveSettings(s), resetSeason()
  */
 (function (root) {
@@ -29,9 +30,9 @@
   }
   FirebaseStore.prototype.subscribe = function (cb, onError) {
     var db = this.db;
-    var data = { players: {}, matches: [], settings: Object.assign({}, GG.DEFAULT_SETTINGS), reports: [] };
-    var ready = { p: false, m: false, s: false, r: false };
-    function emit() { if (ready.p && ready.m && ready.s && ready.r) cb(data); }
+    var data = { players: {}, matches: [], settings: Object.assign({}, GG.DEFAULT_SETTINGS), reports: [], adjusts: [] };
+    var ready = { p: false, m: false, s: false, r: false, j: false };
+    function emit() { if (ready.p && ready.m && ready.s && ready.r && ready.j) cb(data); }
     var fail = function (e) { if (onError) onError(e); };
     db.collection('gonggi_players').onSnapshot(function (snap) {
       data.players = {};
@@ -50,7 +51,15 @@
       data.reports = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
       ready.r = true; emit();
     }, fail);
+    db.collection('gonggi_adjust').onSnapshot(function (snap) {
+      data.adjusts = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+      ready.j = true; emit();
+    }, fail);
   };
+  FirebaseStore.prototype.addAdjust = function (p, d, note) {
+    return this.db.collection('gonggi_adjust').doc().set({ p: p, d: d, note: note || '', t: Date.now() });
+  };
+  FirebaseStore.prototype.deleteAdjust = function (id) { return this.db.collection('gonggi_adjust').doc(id).delete(); };
   FirebaseStore.prototype.record = function (winnerId, loserId, opts) {
     opts = opts || {};
     var db = this.db, reps = db.collection('gonggi_reports');
@@ -106,7 +115,7 @@
         return Promise.all(jobs);
       });
     }
-    return Promise.all([wipe('gonggi_matches'), wipe('gonggi_reports')]);
+    return Promise.all([wipe('gonggi_matches'), wipe('gonggi_reports'), wipe('gonggi_adjust')]);
   };
 
   FirebaseStore.prototype.hasPin = function (id) { return this.getPin(id).then(function (p) { return !!p; }); };
@@ -185,6 +194,8 @@
   SheetStore.prototype.saveSettings = function (st) { return this._post({ action: 'saveSettings', settings: st }); };
   SheetStore.prototype.setRoster = function (names, league) { return this._post({ action: 'setRoster', students: names, league: league }); };
   SheetStore.prototype.resetPin = function (id) { return this._post({ action: 'resetPin', id: id }); };
+  SheetStore.prototype.addAdjust = function (p, d, note) { return this._post({ action: 'addAdjust', p: p, d: d, note: note }); };
+  SheetStore.prototype.deleteAdjust = function (id) { return this._post({ action: 'deleteAdjust', id: id }); };
   SheetStore.prototype.resetSeason = function () { return this._post({ action: 'resetSeason' }); };
 
   /* ───────── 체험: 이 브라우저에만 ───────── */
@@ -199,12 +210,13 @@
     this.data.settings = Object.assign({}, GG.DEFAULT_SETTINGS, this.data.settings || {});
     this.data.pins = this.data.pins || {};
     this.data.reports = this.data.reports || {};
+    this.data.adjusts = this.data.adjusts || [];
     this.n = 0;
   }
   LocalStore.prototype._save = function () {
     try { localStorage.setItem(LOCAL_KEY, JSON.stringify(this.data)); } catch (e) { /* 무시 */ }
     var R = this.data.reports;
-    var snap = { players: this.data.players, matches: this.data.matches.slice(), settings: this.data.settings,
+    var snap = { players: this.data.players, matches: this.data.matches.slice(), settings: this.data.settings, adjusts: this.data.adjusts.slice(),
       reports: Object.keys(R).map(function (id) { return Object.assign({ id: id }, R[id]); }) };
     this.listeners.forEach(function (cb) { cb(snap); });
   };
@@ -240,7 +252,15 @@
   LocalStore.prototype.getPin = function (id) { return Promise.resolve(this.data.pins[id] || null); };
   LocalStore.prototype.setPin = function (id, pin) { this.data.pins[id] = pin; this._save(); return Promise.resolve(); };
   LocalStore.prototype.saveSettings = function (s) { this.data.settings = s; this._save(); return Promise.resolve(); };
-  LocalStore.prototype.resetSeason = function () { this.data.matches = []; this.data.reports = {}; this._save(); return Promise.resolve(); };
+  LocalStore.prototype.addAdjust = function (p, d, note) {
+    this.data.adjusts.push({ id: 'j' + Date.now().toString(36) + (++this.n), p: p, d: d, note: note || '', t: Date.now() });
+    this._save(); return Promise.resolve();
+  };
+  LocalStore.prototype.deleteAdjust = function (id) {
+    this.data.adjusts = this.data.adjusts.filter(function (a) { return a.id !== id; });
+    this._save(); return Promise.resolve();
+  };
+  LocalStore.prototype.resetSeason = function () { this.data.matches = []; this.data.reports = {}; this.data.adjusts = []; this._save(); return Promise.resolve(); };
   LocalStore.prototype.hasPin = function (id) { return Promise.resolve(!!this.data.pins[id]); };
   LocalStore.prototype.checkPin = function (id, pin) { return Promise.resolve((!!this.data.pins[id] && this.data.pins[id] === pin) || pin === this.teacherPw); };
   LocalStore.prototype.checkTeacher = function (pw) { return Promise.resolve(pw === this.teacherPw); };
