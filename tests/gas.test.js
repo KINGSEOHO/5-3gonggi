@@ -88,3 +88,11 @@ test('LP 조정은 선생님만, 시트에 남고 새 시즌에 지워진다', (
   g.post({ action: 'resetSeason', teacherPw: 'abcd' });
   assert.strictEqual(g.get('state').adjusts.length, 0);
 });
+
+test('선생님 계정: 대결 기록 가능, 꾸미기는 선생님 비밀번호 필요', () => {
+  const g = setup();
+  assert.ok(g.post({ action: 'record', w: '가', l: '선생님' }).ok);
+  assert.strictEqual(g.post({ action: 'updatePlayer', id: '선생님', fields: { hat: 'mortarboard' } }).ok, false);
+  assert.ok(g.post({ action: 'updatePlayer', id: '선생님', fields: { hat: 'mortarboard' }, teacherPw: 'abcd' }).ok);
+  assert.strictEqual(g.get('state').players['선생님'].hat, 'mortarboard');
+});

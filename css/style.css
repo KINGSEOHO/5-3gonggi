@@ -555,3 +555,22 @@ textarea.code { min-height: 140px; font-family: ui-monospace, Menlo, Consolas, m
 .season-note { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border: 1px solid var(--gold-lo); background: rgba(6, 8, 14, .55); color: #d9dde5; font-size: 14px; max-width: 52ch; }
 .season-note svg { color: var(--gold); flex-shrink: 0; margin-top: 2px; }
 .season-note b { color: var(--gold-hi); }
+
+/* ── 캐릭터 효과 (오라·연승 불꽃) ── */
+.avatar-full { overflow: visible; }
+.fx-flicker { animation: fx-flicker 1.1s ease-in-out infinite alternate; transform-box: view-box; }
+.fx-twinkle { animation: fx-twinkle 1.8s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.fx-float { animation: fx-float 3s ease-in-out infinite; }
+.fx-spin { animation: fx-spin 18s linear infinite; transform-box: view-box; transform-origin: 30px 40px; }
+.fx-pulse { animation: fx-pulse 2.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.fx-flash { animation: fx-flash 2.2s steps(1) infinite; }
+@keyframes fx-flicker { 0% { transform: scale(1, 1); opacity: .85; } 50% { transform: scale(1.04, .96); } 100% { transform: scale(.97, 1.06); opacity: 1; } }
+@keyframes fx-twinkle { 0%, 100% { transform: scale(.4); opacity: .3; } 50% { transform: scale(1.15); opacity: 1; } }
+@keyframes fx-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+@keyframes fx-spin { to { transform: rotate(360deg); } }
+@keyframes fx-pulse { 0%, 100% { transform: scale(.94); opacity: .7; } 50% { transform: scale(1.04); opacity: 1; } }
+@keyframes fx-flash { 0%, 60% { opacity: 1; } 62%, 70% { opacity: .2; } 72%, 100% { opacity: 1; } }
+.streak-tag { font-family: var(--font-epic); font-weight: 900; font-size: 11px; letter-spacing: .2em; color: #ffb02e; text-shadow: 0 0 8px #ff5a1f; }
+.teacher-tag { display: inline-flex; align-items: center; gap: 4px; padding: 0 7px; font-size: 11px; font-weight: 700; border: 1px solid #2fd28a; color: #8ff0c4; background: rgba(47, 210, 138, .1); }
+.teacher-card { border-color: #2fd28a !important; }
+.wd-item .wd-req.teacher { color: #8ff0c4; }

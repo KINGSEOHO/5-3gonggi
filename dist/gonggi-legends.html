@@ -567,6 +567,25 @@ textarea.code { min-height: 140px; font-family: ui-monospace, Menlo, Consolas, m
 .season-note { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border: 1px solid var(--gold-lo); background: rgba(6, 8, 14, .55); color: #d9dde5; font-size: 14px; max-width: 52ch; }
 .season-note svg { color: var(--gold); flex-shrink: 0; margin-top: 2px; }
 .season-note b { color: var(--gold-hi); }
+
+/* ── 캐릭터 효과 (오라·연승 불꽃) ── */
+.avatar-full { overflow: visible; }
+.fx-flicker { animation: fx-flicker 1.1s ease-in-out infinite alternate; transform-box: view-box; }
+.fx-twinkle { animation: fx-twinkle 1.8s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.fx-float { animation: fx-float 3s ease-in-out infinite; }
+.fx-spin { animation: fx-spin 18s linear infinite; transform-box: view-box; transform-origin: 30px 40px; }
+.fx-pulse { animation: fx-pulse 2.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.fx-flash { animation: fx-flash 2.2s steps(1) infinite; }
+@keyframes fx-flicker { 0% { transform: scale(1, 1); opacity: .85; } 50% { transform: scale(1.04, .96); } 100% { transform: scale(.97, 1.06); opacity: 1; } }
+@keyframes fx-twinkle { 0%, 100% { transform: scale(.4); opacity: .3; } 50% { transform: scale(1.15); opacity: 1; } }
+@keyframes fx-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+@keyframes fx-spin { to { transform: rotate(360deg); } }
+@keyframes fx-pulse { 0%, 100% { transform: scale(.94); opacity: .7; } 50% { transform: scale(1.04); opacity: 1; } }
+@keyframes fx-flash { 0%, 60% { opacity: 1; } 62%, 70% { opacity: .2; } 72%, 100% { opacity: 1; } }
+.streak-tag { font-family: var(--font-epic); font-weight: 900; font-size: 11px; letter-spacing: .2em; color: #ffb02e; text-shadow: 0 0 8px #ff5a1f; }
+.teacher-tag { display: inline-flex; align-items: center; gap: 4px; padding: 0 7px; font-size: 11px; font-weight: 700; border: 1px solid #2fd28a; color: #8ff0c4; background: rgba(47, 210, 138, .1); }
+.teacher-card { border-color: #2fd28a !important; }
+.wd-item .wd-req.teacher { color: #8ff0c4; }
 </style>
 </head>
 <body>
@@ -825,11 +844,13 @@ window.GG_CONFIG = {
   /* 경기 기록(원본)을 시간 순서대로 다시 계산해 모든 선수 점수와 경기별 결과를 만든다.
      기록을 고치거나 지워도 이것만 다시 돌리면 된다. */
   /* adjusts: 선생님이 직접 더하거나 뺀 LP [{id, p: 이름, d: +/-LP, note, t}]. 승패·연승에는 영향 없음 */
-  function replay(ids, matches, settings, adjusts) {
+  /* fixed: 점수가 고정된 선수 {id: LP} (선생님 계정) */
+  function replay(ids, matches, settings, adjusts, fixed) {
+    fixed = fixed || {};
     var s = Object.assign({}, DEFAULT_SETTINGS, settings || {});
     var P = {};
     function get(id) {
-      if (!P[id]) P[id] = { id: id, points: s.startPoints, wins: 0, losses: 0, streak: 0, bestStreak: 0, peak: s.startPoints, adjusted: 0 };
+      if (!P[id]) P[id] = { id: id, points: id in fixed ? fixed[id] : s.startPoints, wins: 0, losses: 0, streak: 0, bestStreak: 0, peak: s.startPoints, adjusted: 0 };
       return P[id];
     }
     (ids || []).forEach(get);
@@ -840,6 +861,7 @@ window.GG_CONFIG = {
     events.forEach(function (e) {
       var m = e.v;
       if (e.k === 'j') {
+        if (m.p in fixed) return;
         var p = get(m.p), before = p.points;
         p.points = Math.max(0, p.points + (Number(m.d) || 0));
         p.peak = Math.max(p.peak, p.points);
@@ -856,6 +878,8 @@ window.GG_CONFIG = {
         after: { a: out.winner.points, b: out.loser.points }
       });
       Object.assign(w, out.winner); Object.assign(l, out.loser);
+      if (w.id in fixed) { w.points = w.peak = fixed[w.id]; results[results.length - 1].after.a = w.points; }
+      if (l.id in fixed) { l.points = l.peak = fixed[l.id]; results[results.length - 1].after.b = l.points; }
     });
     return { players: P, matches: results, adjusts: adj };
   }
@@ -1148,6 +1172,7 @@ window.GG_CONFIG = {
 /* 공기 레전드 — 블록 캐릭터 옷장과 그리기
  * look = { skin, face, hair, hairColor, hat, top, shirt, pants, back }
  * unlock = 그 아이템이 열리는 티어 번호(시즌 최고 티어 기준). 0 = 처음부터
+ * teacher: true 인 아이템은 선생님 계정만 쓸 수 있다
  * 티어 번호: 0 아이언, 1 브론즈, 2 실버, 3 골드, 4 플래티넘, 5 에메랄드, 6 다이아몬드, 7 마스터, 8 그랜드마스터, 9 챌린저
  */
 (function (root) {
@@ -1171,16 +1196,31 @@ window.GG_CONFIG = {
   var HATS = [
     { id: 'none', name: '없음' }, { id: 'cap', name: '야구모자' }, { id: 'beanie', name: '털모자' }, { id: 'headband', name: '머리띠' },
     { id: 'headphones', name: '헤드폰', unlock: 1 }, { id: 'wizard', name: '마법사 모자', unlock: 2 },
-    { id: 'crown', name: '왕관', unlock: 7 }, { id: 'horns', name: '마왕의 뿔', unlock: 8 }, { id: 'halo', name: '천사 고리', unlock: 9 }
+    { id: 'cat', name: '고양이 귀' }, { id: 'party', name: '파티 모자' }, { id: 'bunny', name: '토끼 귀', unlock: 1 },
+    { id: 'pirate', name: '해적 모자', unlock: 3 },
+    { id: 'crown', name: '왕관', unlock: 7 }, { id: 'horns', name: '마왕의 뿔', unlock: 8 }, { id: 'halo', name: '천사 고리', unlock: 9 },
+    { id: 'mortarboard', name: '선생님 학사모', teacher: true }
   ];
   var TOPS = [
     { id: 'plain', name: '기본 티' }, { id: 'stripe', name: '줄무늬' }, { id: 'jersey', name: '번호 유니폼' },
     { id: 'hoodie', name: '후드티', unlock: 1 }, { id: 'suit', name: '정장', unlock: 2 },
-    { id: 'armor', name: '기사 갑옷', unlock: 4 }, { id: 'royal', name: '왕족 예복', unlock: 6 }
+    { id: 'armor', name: '기사 갑옷', unlock: 4 }, { id: 'royal', name: '왕족 예복', unlock: 6 },
+    { id: 'teacher', name: '선생님 카디건', teacher: true }
   ];
   var BACKS = [
     { id: 'none', name: '없음' }, { id: 'backpack', name: '책가방' }, { id: 'cape', name: '망토', unlock: 3 },
-    { id: 'sword', name: '전설의 검', unlock: 5 }, { id: 'wings', name: '날개', unlock: 6 }
+    { id: 'jetpack', name: '제트팩', unlock: 4 }, { id: 'sword', name: '전설의 검', unlock: 5 }, { id: 'wings', name: '날개', unlock: 6 }
+  ];
+  var ACCS = [
+    { id: 'none', name: '없음' }, { id: 'glasses', name: '동그란 안경' }, { id: 'scarf', name: '목도리' }, { id: 'bowtie', name: '나비넥타이' },
+    { id: 'medal', name: '금메달', unlock: 3 }, { id: 'pointer', name: '선생님 지시봉', teacher: true }
+  ];
+  /* 오라: 캐릭터 뒤에서 빛나는 효과 */
+  var AURAS = [
+    { id: 'none', name: '없음' }, { id: 'sparkle', name: '반짝이' }, { id: 'bubble', name: '비눗방울' }, { id: 'hearts', name: '하트', unlock: 1 },
+    { id: 'flame', name: '불꽃', unlock: 3 }, { id: 'ice', name: '얼음 결정', unlock: 4 }, { id: 'thunder', name: '번개', unlock: 5 },
+    { id: 'galaxy', name: '은하수', unlock: 6 }, { id: 'rainbow', name: '무지개', unlock: 7 }, { id: 'legend', name: '전설의 빛', unlock: 9 },
+    { id: 'sage', name: '현자의 오라', teacher: true }
   ];
 
   /* 꾸미기 화면 탭 */
@@ -1189,9 +1229,11 @@ window.GG_CONFIG = {
     { id: 'hair', label: '머리', rows: [{ key: 'hair', label: '머리 모양', items: HAIRS, view: 'head' }, { key: 'hairColor', label: '머리 색', colors: HAIR_COLORS }] },
     { id: 'hat', label: '모자', rows: [{ key: 'hat', label: '모자', items: HATS, view: 'head' }] },
     { id: 'outfit', label: '옷', rows: [{ key: 'top', label: '상의', items: TOPS, view: 'full' }, { key: 'shirt', label: '상의 색', colors: SHIRTS }, { key: 'pants', label: '하의 색', colors: PANTS }] },
-    { id: 'back', label: '등', rows: [{ key: 'back', label: '등 장식', items: BACKS, view: 'full' }] }
+    { id: 'acc', label: '장신구', rows: [{ key: 'acc', label: '장신구', items: ACCS, view: 'full' }] },
+    { id: 'back', label: '등', rows: [{ key: 'back', label: '등 장식', items: BACKS, view: 'full' }] },
+    { id: 'aura', label: '오라', rows: [{ key: 'aura', label: '오라', items: AURAS, view: 'full' }] }
   ];
-  var ITEMS = { face: FACES, hair: HAIRS, hat: HATS, top: TOPS, back: BACKS };
+  var ITEMS = { face: FACES, hair: HAIRS, hat: HATS, top: TOPS, back: BACKS, acc: ACCS, aura: AURAS };
   var COLORS = { skin: SKINS, hairColor: HAIR_COLORS, shirt: SHIRTS, pants: PANTS };
 
   function shade(hex, amt) {
@@ -1210,8 +1252,13 @@ window.GG_CONFIG = {
     var faces = ['smile', 'grin', 'happy', 'wink', 'cool', 'fierce', 'smug', 'blush'];
     return {
       skin: SKINS[0], face: faces[(i * 5) % faces.length], hair: ['short', 'spiky', 'bangs', 'long', 'ponytail', 'bun'][i % 6],
-      hairColor: HAIR_COLORS[(i * 3) % 4], hat: 'none', top: 'plain', shirt: SHIRTS[i % SHIRTS.length], pants: PANTS[0], back: 'none'
+      hairColor: HAIR_COLORS[(i * 3) % 4], hat: 'none', top: 'plain', shirt: SHIRTS[i % SHIRTS.length], pants: PANTS[0], back: 'none',
+      acc: 'none', aura: 'none'
     };
+  }
+  /* 선생님 계정의 처음 모습 */
+  function teacherDefaults() {
+    return Object.assign(defaults(0), { face: 'smile', hair: 'short', hairColor: HAIR_COLORS[0], hat: 'mortarboard', top: 'teacher', shirt: '#2f9e63', acc: 'pointer', aura: 'sage' });
   }
   /* 저장된 값 + 기본값 (예전 버전의 color 필드도 받아 줌) */
   function normalize(saved, i) {
@@ -1226,14 +1273,16 @@ window.GG_CONFIG = {
     for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
     return null;
   }
-  function isLocked(key, id, tierIndex) {
+  /* teacher = 선생님 계정이면 모든 아이템이 열려 있다 */
+  function isLocked(key, id, tierIndex, teacher) {
     var it = findItem(key, id);
-    return !!(it && it.unlock && it.unlock > (tierIndex || 0));
+    if (!it || teacher) return false;
+    return !!(it.teacher || (it.unlock && it.unlock > (tierIndex || 0)));
   }
   /* 잠긴 아이템을 입고 있으면 기본으로 되돌린 look */
-  function allowed(look, tierIndex) {
+  function allowed(look, tierIndex, teacher) {
     var out = Object.assign({}, look);
-    Object.keys(ITEMS).forEach(function (k) { if (isLocked(k, out[k], tierIndex)) out[k] = ITEMS[k][0].id; });
+    Object.keys(ITEMS).forEach(function (k) { if (isLocked(k, out[k], tierIndex, teacher)) out[k] = ITEMS[k][0].id; });
     return out;
   }
 
@@ -1289,6 +1338,16 @@ window.GG_CONFIG = {
       case 'horns':
         var horn = '<path d="M20 5 C 13 0, 11 -7, 15 -15 C 17 -6, 21 -2, 25 2 Z" fill="#2a1418" stroke="#0e0608" stroke-width="1"/><path d="M15 -15 C 14.5 -11, 15 -9, 16.5 -7 L 17.5 -9 Z" fill="#e84057"/>';
         return horn + '<g transform="translate(60 0) scale(-1 1)">' + horn + '</g>';
+      case 'cat':
+        var ear = '<path d="M17.5 8 L19 -6 L28 3 Z" fill="' + (look.hairColor || '#4a2e1c') + '"/><path d="M20 4 L20.6 -2.5 L25 2.5 Z" fill="#f4a3b5"/>';
+        return ear + '<g transform="translate(60 0) scale(-1 1)">' + ear + '</g>';
+      case 'bunny':
+        var be = '<ellipse cx="23" cy="-9" rx="3.6" ry="11" fill="#f4f1ea" stroke="#cfc8b8" stroke-width=".8" transform="rotate(-10 23 -9)"/><ellipse cx="23" cy="-8" rx="1.6" ry="8" fill="#f4a3b5" transform="rotate(-10 23 -8)"/>';
+        return be + '<g transform="translate(60 0) scale(-1 1)">' + be + '</g>';
+      case 'party': return '<path d="M23 5 L31 -18 L38 5 Z" fill="#3d72d9"/><path d="M25.3 -1.5 L35.8 -1.5 M27.6 -8 L33.6 -8" stroke="#f2c94c" stroke-width="2.4"/><circle cx="31" cy="-18" r="2.6" fill="#e84057"/>';
+      case 'pirate': return '<path d="M13 9 Q30 -14 47 9 Q30 4 13 9 Z" fill="#14161c"/><path d="M13 9 Q30 4 47 9" stroke="#c8aa6e" stroke-width="1.6" fill="none"/><circle cx="30" cy="0" r="2.6" fill="#f2f2f2"/><path d="M27.5 3.5 L32.5 5.5 M32.5 3.5 L27.5 5.5" stroke="#f2f2f2" stroke-width="1"/>';
+      case 'mortarboard': return '<rect x="20" y="0" width="20" height="7" rx="1" fill="#1a1d24"/><path d="M10 0 L30 -7 L50 0 L30 7 Z" fill="#23262e" stroke="#0b0c10" stroke-width=".8"/><circle cx="30" cy="0" r="1.3" fill="#e2c46a"/>' +
+        '<path d="M30 0 L45 1 L45 10" stroke="#e2c46a" stroke-width="1.2" fill="none"/><rect x="43.8" y="9" width="2.4" height="5" rx="1" fill="#e2c46a"/>';
       case 'halo': return '<ellipse cx="30" cy="-8" rx="13" ry="3.6" fill="none" stroke="#ffe58a" stroke-width="6" opacity=".3"/><ellipse cx="30" cy="-8" rx="13" ry="3.6" fill="none" stroke="#ffe58a" stroke-width="2.4"/>';
       default: return '';
     }
@@ -1299,6 +1358,10 @@ window.GG_CONFIG = {
       case 'cape': return '<path d="M13 27 L47 27 L55 82 L5 82 Z" fill="#8b1e2d"/><path d="M30 27 L47 27 L55 82 L30 82 Z" fill="#000" opacity=".2"/>';
       case 'sword': return '<g transform="rotate(-32 30 40)"><rect x="27.5" y="-12" width="5" height="52" fill="#d5dde8" stroke="#6b7a90" stroke-width="1"/><path d="M27.5 -12 L30 -17 L32.5 -12 Z" fill="#d5dde8" stroke="#6b7a90" stroke-width="1"/>' +
         '<rect x="21" y="38" width="18" height="4" rx="1" fill="#c8aa6e" stroke="#785a28" stroke-width="1"/><rect x="28" y="42" width="4" height="10" fill="#5a3a22"/><circle cx="30" cy="53.5" r="2.6" fill="#c8aa6e"/></g>';
+      case 'jetpack':
+        var jp = '<rect x="7" y="18" width="9" height="24" rx="4" fill="#9aa6b8" stroke="#5f6b7e" stroke-width="1"/><rect x="7" y="22" width="9" height="3" fill="#e84057"/>' +
+          '<path class="fx-flicker" d="M8.5 42 Q11.5 56 14.5 42 Z" fill="#ffb02e"/><path class="fx-flicker" d="M10 42 Q11.5 50 13 42 Z" fill="#fff3b0"/>';
+        return jp + '<g transform="translate(60 0) scale(-1 1)">' + jp + '</g>';
       case 'wings':
         var w = '<path d="M17 32 L-10 10 L-7 22 L-14 26 L-6 32 L-12 40 L-2 42 L-6 50 L8 48 L17 48 Z" fill="#eef4ff" stroke="#9fb6d9" stroke-width="1.2" stroke-linejoin="round"/><path d="M17 36 L-4 24 M17 42 L-2 38" stroke="#9fb6d9" stroke-width="1"/>';
         return w + '<g transform="translate(60 0) scale(-1 1)">' + w + '</g>';
@@ -1324,6 +1387,12 @@ window.GG_CONFIG = {
         out = '<rect x="14" y="26" width="32" height="23" rx="2" fill="#a3afc2"/><path d="M30 26 h16 v23 h-16z" fill="#7d899c"/><path d="M19 29 h22 v6 Q30 40 19 35z" fill="#c7d1e0"/><path d="M30 38 v10" stroke="#5f6b7e" stroke-width="1.5"/>' +
           '<rect x="1" y="24" width="15" height="9" rx="3" fill="#c7d1e0" stroke="#5f6b7e" stroke-width="1"/><rect x="44" y="24" width="15" height="9" rx="3" fill="#a3afc2" stroke="#5f6b7e" stroke-width="1"/><circle cx="30" cy="33" r="2.4" fill="' + c + '"/>';
         break;
+      case 'teacher':
+        out = '<path d="M24 26 L30 34 L36 26 Z" fill="#f4f1ea"/><path d="M23 26 L30 36 L30 55 L14 55 L14 26 Z" fill="' + dk + '" opacity=".55"/><path d="M37 26 L30 36 L30 55 L46 55 L46 26 Z" fill="' + dk + '" opacity=".55"/>' +
+          '<circle cx="30" cy="40" r="1" fill="#e2c46a"/><circle cx="30" cy="45" r="1" fill="#e2c46a"/>' +
+          '<path d="M22 26 L27 39 M38 26 L33 39" stroke="#3d72d9" stroke-width="1"/><rect x="24" y="38" width="12" height="7" rx="1" fill="#fff" stroke="#c8aa6e" stroke-width=".8"/>' +
+          '<text x="30" y="43.6" text-anchor="middle" font-family="sans-serif" font-weight="900" font-size="4.6" fill="#1a1d24">선생님</text>';
+        break;
       case 'royal':
         out = '<rect x="28.5" y="26" width="3" height="23" fill="#e2c46a"/><rect x="14" y="26" width="32" height="3" fill="#e2c46a"/><circle cx="30" cy="35" r="3.2" fill="#e2c46a" stroke="#8a6d1e" stroke-width="1"/><circle cx="30" cy="35" r="1.4" fill="#e84057"/>' +
           '<rect x="3" y="27" width="11" height="4" fill="#e2c46a"/><rect x="46" y="27" width="11" height="4" fill="#e2c46a"/>';
@@ -1332,11 +1401,84 @@ window.GG_CONFIG = {
     return out;
   }
 
+  /* 장신구 */
+  function acc(id, look) {
+    switch (id) {
+      case 'glasses': return '<circle cx="26.7" cy="11.8" r="3.4" fill="#ffffff" fill-opacity=".15" stroke="#1a1410" stroke-width="1.2"/><circle cx="33.3" cy="11.8" r="3.4" fill="#ffffff" fill-opacity=".15" stroke="#1a1410" stroke-width="1.2"/><path d="M30.1 11.6 h-.2" stroke="#1a1410" stroke-width="1.2"/>';
+      case 'scarf': return '<rect x="19" y="22.5" width="22" height="6" rx="3" fill="#c8423d"/><path d="M34 26 L37 40 L32 40 L30.5 27 Z" fill="#a8322e"/><path d="M21 24 h18" stroke="#f2e6d0" stroke-width="1" stroke-dasharray="2 2"/>';
+      case 'bowtie': return '<path d="M24 25 L29 27.5 L24 30 Z M36 25 L31 27.5 L36 30 Z" fill="#c8423d"/><rect x="28.6" y="26.2" width="2.8" height="2.6" rx=".6" fill="#8e2420"/>';
+      case 'medal': return '<path d="M25 26 L30 36 L35 26" stroke="#3d72d9" stroke-width="2.4" fill="none"/><circle cx="30" cy="39" r="4" fill="#f2c94c" stroke="#a5803f" stroke-width="1"/><path d="M30 36.8 l.7 1.5 1.6.2-1.2 1.1.3 1.6-1.4-.8-1.4.8.3-1.6-1.2-1.1 1.6-.2z" fill="#fff6c8"/>';
+      case 'pointer': return '<g transform="rotate(-38 52 50)"><rect x="50.8" y="22" width="2.4" height="32" rx="1" fill="#8a5a2b"/><rect x="50.5" y="19" width="3" height="4" rx="1" fill="#e84057"/></g><circle cx="51.5" cy="51" r="3" fill="' + (look.skin || SKINS[0]) + '"/>';
+      default: return '';
+    }
+  }
+
+  var auid = 0;
+  /* 오라 (캐릭터 뒤, 중심 30,42) */
+  function aura(id) {
+    var g = 'av' + (++auid), out = '';
+    var star4 = function (x, y, r, c, d) { return '<path class="fx-twinkle" style="animation-delay:' + d + 's" d="M' + x + ' ' + (y - r) + ' Q' + x + ' ' + y + ' ' + (x + r) + ' ' + y + ' Q' + x + ' ' + y + ' ' + x + ' ' + (y + r) + ' Q' + x + ' ' + y + ' ' + (x - r) + ' ' + y + ' Q' + x + ' ' + y + ' ' + x + ' ' + (y - r) + 'Z" fill="' + c + '"/>'; };
+    switch (id) {
+      case 'sparkle':
+        return '<circle cx="30" cy="40" r="40" fill="#fff6c8" opacity=".08"/>' + [[2, 10, 4], [60, 6, 5], [-6, 40, 3.5], [66, 38, 4], [4, 70, 3], [58, 72, 4.5], [30, -12, 3.5]].map(function (q, k) { return star4(q[0], q[1], q[2], '#fff3b0', k * 0.3); }).join('');
+      case 'bubble':
+        return [[0, 20, 5], [62, 14, 4], [-6, 52, 6], [66, 50, 5], [10, 78, 4], [52, 80, 3.5], [30, -10, 4]].map(function (q, k) {
+          return '<g class="fx-float" style="animation-delay:' + (k * 0.4) + 's"><circle cx="' + q[0] + '" cy="' + q[1] + '" r="' + q[2] + '" fill="#9fd8f0" fill-opacity=".18" stroke="#c9ecff" stroke-width="1"/><circle cx="' + (q[0] - q[2] / 3) + '" cy="' + (q[1] - q[2] / 3) + '" r="' + (q[2] / 4) + '" fill="#fff" opacity=".8"/></g>';
+        }).join('');
+      case 'hearts':
+        return [[0, 16, 1], [62, 10, .8], [-6, 48, .9], [66, 46, 1.1], [8, 76, .7], [54, 78, .9]].map(function (q, k) {
+          return '<path class="fx-float" style="animation-delay:' + (k * 0.5) + 's" transform="translate(' + q[0] + ' ' + q[1] + ') scale(' + q[2] + ')" d="M0 3 C-6 -3 -10 4 0 10 C10 4 6 -3 0 3Z" fill="#ff7a9a" opacity=".85"/>';
+        }).join('');
+      case 'flame': return flames('#ff5a1f', '#ffb02e', '#ffe680', 1);
+      case 'ice':
+        out = '<circle cx="30" cy="40" r="42" fill="#9fd8f0" opacity=".1"/><g class="fx-spin">';
+        for (var k = 0; k < 8; k++) out += '<path transform="rotate(' + (k * 45) + ' 30 40)" d="M30 -6 L34 2 L30 10 L26 2 Z" fill="#c9f1ff" stroke="#5fb8e0" stroke-width=".8" opacity=".9"/>';
+        return out + '</g>';
+      case 'thunder':
+        var bolt = function (x, flip, d) { return '<path class="fx-flash" style="animation-delay:' + d + 's" transform="translate(' + x + ' 0)' + (flip ? ' scale(-1 1)' : '') + '" d="M0 4 L-8 26 L-1 26 L-9 52 L8 20 L1 20 L8 4 Z" fill="#ffe14d" stroke="#a46bff" stroke-width="1.4"/>'; };
+        return '<circle cx="30" cy="40" r="42" fill="#a46bff" opacity=".12"/>' + bolt(-2, false, 0) + bolt(62, true, .6) + bolt(4, false, 1.1).replace('M0 4', 'M0 40');
+      case 'galaxy':
+        out = '<defs><radialGradient id="' + g + '"><stop offset="0" stop-color="#b78cff" stop-opacity=".7"/><stop offset=".6" stop-color="#4b2a9a" stop-opacity=".35"/><stop offset="1" stop-color="#0b0c20" stop-opacity="0"/></radialGradient></defs>' +
+          '<circle cx="30" cy="40" r="46" fill="url(#' + g + ')"/><g class="fx-spin">';
+        [[-2, 8], [62, 12], [-8, 50], [68, 58], [14, 82], [50, 84], [30, -8], [8, 30], [56, 28]].forEach(function (q, k) { out += '<circle cx="' + q[0] + '" cy="' + q[1] + '" r="' + (k % 3 ? 1 : 1.8) + '" fill="#fff"/>'; });
+        return out + '<path d="M30 40 m-36 0 a36 14 0 1 0 72 0 a36 14 0 1 0 -72 0" fill="none" stroke="#d9c2ff" stroke-width=".8" opacity=".6" transform="rotate(-20 30 40)"/></g>';
+      case 'rainbow':
+        return ['#e84057', '#f28c28', '#f2c94c', '#2fb466', '#3a7bff', '#6a4fd0'].map(function (c, k) {
+          var r = 46 - k * 4;
+          return '<path d="M' + (30 - r) + ' 46 A' + r + ' ' + r + ' 0 0 1 ' + (30 + r) + ' 46" fill="none" stroke="' + c + '" stroke-width="4" opacity=".8"/>';
+        }).join('') + '<circle class="fx-pulse" cx="30" cy="40" r="30" fill="#fff" opacity=".06"/>';
+      case 'legend':
+        out = '<circle class="fx-pulse" cx="30" cy="40" r="44" fill="#ffd34d" opacity=".18"/><g class="fx-spin">';
+        for (var r2 = 0; r2 < 16; r2++) out += '<path transform="rotate(' + (r2 * 22.5) + ' 30 40)" d="M28.5 40 L30 -10 L31.5 40 Z" fill="#fff1b0" opacity=".45"/>';
+        return out + '</g>' + star4(-4, 6, 4, '#fff', 0) + star4(64, 10, 5, '#fff', .7) + star4(66, 70, 4, '#fff', 1.2);
+      case 'sage':
+        out = '<circle class="fx-pulse" cx="30" cy="40" r="44" fill="#2fd28a" opacity=".12"/><g class="fx-spin"><circle cx="30" cy="40" r="40" fill="none" stroke="#e2c46a" stroke-width="1.4" stroke-dasharray="3 5"/>';
+        for (var q = 0; q < 12; q++) out += '<rect transform="rotate(' + (q * 30) + ' 30 40)" x="28.5" y="-2.5" width="3" height="5" fill="#e2c46a"/>';
+        out += '</g>';
+        var book = function (x, y, d) { return '<g class="fx-float" style="animation-delay:' + d + 's"><path d="M' + x + ' ' + y + ' l7 -2 l7 2 v9 l-7 -2 l-7 2 Z" fill="#f4f1ea" stroke="#785a28" stroke-width=".8"/><path d="M' + (x + 7) + ' ' + (y - 2) + ' v9" stroke="#785a28" stroke-width=".8"/></g>'; };
+        return out + book(-12, 18, 0) + book(58, 14, .8) + book(-8, 66, 1.4) + book(60, 64, .4);
+      default: return '';
+    }
+  }
+  function flames(c1, c2, c3, k) {
+    var path = 'M30 -14 Q36 0 42 -6 Q44 8 52 4 Q52 22 60 24 Q56 40 62 50 Q54 60 56 78 L4 78 Q6 60 -2 50 Q4 40 0 24 Q8 22 8 4 Q16 8 18 -6 Q24 0 30 -14Z';
+    return '<g class="fx-flicker" style="transform-origin:30px 78px"><path d="' + path + '" fill="' + c1 + '" opacity="' + (.55 * k) + '"/>' +
+      '<path d="' + path + '" transform="translate(30 78) scale(.82) translate(-30 -78)" fill="' + c2 + '" opacity="' + (.6 * k) + '"/>' +
+      '<path d="' + path + '" transform="translate(30 78) scale(.62) translate(-30 -78)" fill="' + c3 + '" opacity="' + (.55 * k) + '"/></g>';
+  }
+  /* 연승 효과: 3연승부터 주황 불꽃, 5연승부터 푸른 불꽃 */
+  function streakFx(n) {
+    if (!n || n < 3) return '';
+    return n >= 5 ? flames('#3a7bff', '#5fd0ff', '#e6fbff', 1.15) : flames('#ff4d1f', '#ff9a1f', '#ffd34d', .85);
+  }
+
   /* 캐릭터 SVG. mode: 'full' 전신 / 'head' 얼굴과 어깨 */
   function render(look, opts) {
     opts = opts || {};
     var L = look, sk = L.skin || SKINS[0], skd = shade(sk, -30), c = L.shirt || SHIRTS[0], dk = shade(c, -45), lt = shade(c, 25), pn = L.pants || PANTS[0];
+    var full = opts.mode !== 'head';
     var body =
+      (full ? streakFx(opts.streak) + aura(L.aura) : '') +
       back(L.back, L) +
       '<rect x="15" y="54" width="14" height="28" rx="1.5" fill="' + pn + '"/><rect x="31" y="54" width="14" height="28" rx="1.5" fill="' + shade(pn, -18) + '"/>' +
       '<rect x="3" y="27" width="11" height="27" rx="2" fill="' + sk + '"/><rect x="46" y="27" width="11" height="27" rx="2" fill="' + skd + '"/>' +
@@ -1346,21 +1488,23 @@ window.GG_CONFIG = {
       '<rect x="14" y="49" width="32" height="6" fill="' + shade(pn, -25) + '"/><rect x="27" y="49" width="6" height="6" fill="#c8aa6e"/>' +
       (L.back === 'backpack' ? '<rect x="17.5" y="26" width="4" height="22" fill="#7a4e33"/><rect x="38.5" y="26" width="4" height="22" fill="#5e3b26"/>' : '') +
       (L.back === 'cape' ? '<rect x="13" y="25" width="34" height="4" rx="1.5" fill="#c8aa6e"/>' : '') +
+      (L.acc === 'scarf' || L.acc === 'medal' ? acc(L.acc, L) : '') +
       '<rect x="24" y="22" width="12" height="6" fill="' + skd + '"/>' +
       '<rect x="17" y="2" width="26" height="23" rx="6" fill="' + sk + '"/><path d="M36 2h1a6 6 0 0 1 6 6v11a6 6 0 0 1-6 6h-1z" fill="#000" opacity=".1"/>' +
       '<g transform="translate(19 3) scale(1.1)">' + face(L.face) + '</g>' +
-      hair(L.hair, L.hairColor || HAIR_COLORS[0]) + hat(L.hat, L);
+      hair(L.hair, L.hairColor || HAIR_COLORS[0]) + hat(L.hat, L) +
+      (L.acc === 'glasses' || L.acc === 'bowtie' || L.acc === 'pointer' ? acc(L.acc, L) : '');
     var vb = opts.mode === 'head' ? '7 -9 46 46' : '-14 -20 88 104';
     var attrs = opts.mode === 'head'
       ? ' width="' + (opts.size || 34) + '" height="' + (opts.size || 34) + '" style="flex-shrink:0;background:linear-gradient(180deg,#1a2338,#0b101b);border:1px solid #2a3550"'
-      : ' class="avatar-full"';
+      : ' class="avatar-full' + (opts.streak >= 3 ? ' on-streak' : '') + '"';
     return '<svg viewBox="' + vb + '"' + attrs + ' aria-hidden="true">' + body + '</svg>';
   }
 
   var api = {
     SKINS: SKINS, HAIR_COLORS: HAIR_COLORS, SHIRTS: SHIRTS, PANTS: PANTS,
-    FACES: FACES, HAIRS: HAIRS, HATS: HATS, TOPS: TOPS, BACKS: BACKS, TABS: TABS, ITEMS: ITEMS, COLORS: COLORS,
-    defaults: defaults, normalize: normalize, isLocked: isLocked, allowed: allowed, findItem: findItem, render: render
+    FACES: FACES, HAIRS: HAIRS, HATS: HATS, TOPS: TOPS, BACKS: BACKS, ACCS: ACCS, AURAS: AURAS, TABS: TABS, ITEMS: ITEMS, COLORS: COLORS,
+    defaults: defaults, teacherDefaults: teacherDefaults, normalize: normalize, isLocked: isLocked, allowed: allowed, findItem: findItem, render: render
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.GGAvatar = api;
@@ -1410,6 +1554,9 @@ window.GG_CONFIG = {
   var CLASS_LINK = location.origin + location.pathname + (SHEET ? '?sheet=' + sheetIdOf(SHEET_URL) : '');
 
   var AV = window.GGAvatar;
+  /* 선생님 계정: 랭킹에는 안 나오고, LP가 고정(기본 마스터 1400)이라 이기면 큰 보상 */
+  var TEACHER_ID = '선생님';
+  function teacherLP() { return (data && data.settings && data.settings.teacherLP) || 1400; }
   var NAV = [
     { id: 'home', label: '로비', icon: 'M12 2 3 7v10l9 5 9-5V7zm0 2.3 6.8 3.8L12 12 5.2 8.1zM5 9.8l6 3.4v6.6l-6-3.3zm8 10V13.2l6-3.4v6.7z' },
     { id: 'battle', label: '대결', icon: 'M4 3h3l7 7-1.5 1.5L4 4zm16 0v3l-9 9-1.5-1.5L18.5 4zM3 17l4-4 4 4-1.5 1.5L8 17l-3 3-2-2 3-3-1.5-1.5zm18 0-4-4-4 4 1.5 1.5L16 17l3 3 2-2-3-3z' },
@@ -1427,9 +1574,10 @@ window.GG_CONFIG = {
   var ME_KEY = LIVE ? 'gonggi-me' : SHEET ? 'gonggi-me-' + sheetIdOf(SHEET_URL).slice(-12) : 'gonggi-me-demo';
   var me = null;
   try { me = localStorage.getItem(ME_KEY); } catch (e) { me = null; }
-  if (me && !ROSTER.some(function (st) { return st.name === me; })) me = null;
+  if (me && me !== TEACHER_ID && !ROSTER.some(function (st) { return st.name === me; })) me = null;
   function setMe(id) { me = id; try { if (id) localStorage.setItem(ME_KEY, id); else localStorage.removeItem(ME_KEY); } catch (e) { /* 무시 */ } render(); }
-  function personal() { return !!me && !ui.teacher; }
+  /* 선생님 계정으로 로그인하면 선생님도 '내 크롬북' 방식으로 대결한다 */
+  function personal() { return !!me && (!ui.teacher || me === TEACHER_ID); }
   var uid = 0;
   var prefs = loadPrefs();
 
@@ -1478,7 +1626,18 @@ window.GG_CONFIG = {
     });
     return cache;
   }
+  var tcache = null;
+  function teacherPlayer() {
+    if (tcache && cache) return tcache;
+    var saved = (data && data.players[TEACHER_ID]) || {};
+    var stat = (calc && calc.players[TEACHER_ID]) || Object.assign(baseStats(), { points: teacherLP() });
+    var look = Object.assign(AV.teacherDefaults(), {});
+    Object.keys(look).forEach(function (k) { if (saved[k]) look[k] = saved[k]; });
+    tcache = Object.assign({ away: false }, saved, stat, { id: TEACHER_ID, name: TEACHER_ID, no: 0, teacher: true, look: look });
+    return tcache;
+  }
   function byId(id) {
+    if (id === TEACHER_ID) return teacherPlayer();
     var list = players();
     for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
     return null;
@@ -1489,6 +1648,7 @@ window.GG_CONFIG = {
     });
   }
   function placeOf(p) { return sorted().indexOf(p) + 1; }
+  function nameTag(p) { return p.teacher ? ' <span class="teacher-tag">선생님</span>' : ''; }
   function matches() { return (calc && calc.matches) || []; }
   function adjusts() { return (calc && calc.adjusts) || []; }
   function matchById(id) { var ms = matches(); for (var i = ms.length - 1; i >= 0; i--) if (ms[i].id === id) return ms[i]; return null; }
@@ -1504,7 +1664,7 @@ window.GG_CONFIG = {
     return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
   }
   /* 블록 캐릭터 (그리기는 js/avatar.js) */
-  function avatarFull(p) { return AV.render(p.look || AV.normalize(p, 0), { no: p.no }); }
+  function avatarFull(p) { return AV.render(p.look || AV.normalize(p, 0), { no: p.no, streak: p.streak > 0 ? p.streak : 0 }); }
   function headshot(p, size) { return AV.render(p.look || AV.normalize(p, 0), { mode: 'head', size: size || 34, no: p.no }); }
 
   /* 티어 엠블럼 — 티어가 오를수록 날개, 뿔, 왕관, 후광이 붙는다 */
@@ -1588,7 +1748,7 @@ window.GG_CONFIG = {
 
   var lastRoute = null;
   function render() {
-    cache = null;
+    cache = null; tcache = null;
     var r = route();
     renderNav(r);
     if (OFFLINE) {
@@ -1811,7 +1971,7 @@ window.GG_CONFIG = {
       var fixed = personal() && key === 'a';
       return '<div class="side ' + cls + '">' + head +
         '<div class="side-glow" style="background:radial-gradient(circle,' + r.tier.color + '66,transparent 65%)"></div>' +
-        avatarFull(p) + '<div class="side-name">' + esc(p.name) + '</div>' +
+        avatarFull(p) + (p.streak >= 3 ? '<span class="streak-tag">ON FIRE · ' + p.streak + '연승</span>' : '') + '<div class="side-name">' + esc(p.name) + nameTag(p) + '</div>' +
         '<div class="tier-tag">' + crest(r, 40) + '<span>' + r.label + '</span></div>' +
         '<div>' + lp(p.points) + ' ' + streakPill(p) + '</div>' +
         (mine ? '<div class="stakes"><span class="stake up">승리 +' + mine.win + '</span><span class="stake down">패배 −' + mine.lose + '</span></div>' : '') +
@@ -1851,7 +2011,15 @@ window.GG_CONFIG = {
     return esc(low.name) + '이(가) 이기면 <b class="up">+' + lowWin + ' LP</b> 대역전. ' + esc(high.name) + '은(는) 지면 <b class="down">−' + highLose + ' LP</b>를 잃어요.';
   }
 
+  function teacherChallenge(a) {
+    if (a.teacher) return '';
+    var t = teacherPlayer(), pv = GG.preview(a, t, settings());
+    return '<button class="rec-item teacher-card" type="button" data-opp="' + TEACHER_ID + '" style="margin:0">' + headshot(t, 44) +
+      '<span style="min-width:0"><b>선생님에게 도전!</b> <span class="teacher-tag">BOSS</span><span class="muted" style="display:block;font-size:12px">선생님은 마스터급 LP로 고정돼요. 이기면 엄청난 보상</span></span>' +
+      '<span class="rec-gain"><span class="up">+' + pv.a.win + '</span><br><span class="down">−' + pv.a.lose + '</span></span></button>';
+  }
   function recommendView(a) {
+    if (a.teacher) return '<section class="panel section"><h2>도전자를 기다리는 중</h2><p class="muted" style="margin:0">선생님 LP는 고정이에요. 아이들이 이기면 큰 보상을 받아요. 상대 고르기에서 학생을 골라 주세요.</p></section>';
     var rec = GG.recommend(a, players(), matches(), settings());
     function item(c) {
       var r = GG.getRank(c.student.points);
@@ -1866,7 +2034,7 @@ window.GG_CONFIG = {
     return '<section class="panel section"><div class="section-head"><h2>' + esc(a.name) + '의 추천 상대</h2></div><div class="rec-groups">' +
       group('호적수', '점수가 가깝고 최근에 붙지 않은 친구', rec.close, '추천할 친구가 없어요') +
       group('도전', '조금 높은 티어. 이기면 큰 보상', rec.challenge, '이미 정상에 있어요') +
-      group('첫 만남', '아직 한 번도 겨루지 않은 친구', rec.fresh, '더 추천할 친구가 없어요') + '</div></section>';
+      group('첫 만남', '아직 한 번도 겨루지 않은 친구', rec.fresh, '더 추천할 친구가 없어요') + '</div>' + teacherChallenge(a) + '</section>';
   }
 
   function pairsView() {
@@ -2005,6 +2173,8 @@ window.GG_CONFIG = {
       '<label class="check"><input type="checkbox" id="set-shield"' + (s.lossShield ? ' checked' : '') + '> 연패 보호 (3연패부터 잃는 LP 절반)</label>' +
       '<div class="form-row"><label for="set-start">시즌 시작 LP</label><select class="input" id="set-start">' +
       [0, 200, 400, 600].map(function (v) { return '<option value="' + v + '"' + (s.startPoints === v ? ' selected' : '') + '>' + v + ' LP (' + GG.getRank(v).label + ')</option>'; }).join('') + '</select></div>' +
+      '<div class="form-row"><label for="set-tlp">선생님 계정 LP (보스 난이도, 높을수록 이겼을 때 보상이 커요)</label><select class="input" id="set-tlp">' +
+      [800, 1000, 1200, 1400, 1700, 2000].map(function (v) { return '<option value="' + v + '"' + (teacherLP() === v ? ' selected' : '') + '>' + v + ' LP (' + GG.getRank(v).label + ')</option>'; }).join('') + '</select></div>' +
       '<div class="form-row"><label for="set-end">이번 시즌 종료일 (로비에 안내돼요)</label><input class="input" id="set-end" type="date" value="' + esc(seasonEnd()) + '"></div>' +
       '<label class="check"><input type="checkbox" id="set-streak"' + (s.streakBonus ? ' checked' : '') + '> 연승 보너스</label>' +
       '<div class="row-actions"><button class="btn btn-gold" type="button" data-act="save-settings">규칙 저장</button></div>' +
@@ -2078,14 +2248,14 @@ window.GG_CONFIG = {
   function openPicker(sideKey) {
     var login = sideKey === 'login';
     var other = login ? null : sideKey === 'a' ? ui.b : ui.a;
-    var list = login ? players().slice() : sorted();
+    var list = [teacherPlayer()].concat(login ? players().slice() : sorted());
     openLayer('<div class="modal modal-wide" role="dialog" aria-modal="true" aria-label="' + (login ? '내 이름 고르기' : '선수 선택') + '"><div class="modal-head"><div><span class="eyebrow">' + (login ? 'Sign In' : sideKey === 'a' ? 'Blue Side' : 'Red Side') + '</span><h2>' + (login ? '내 이름을 골라요' : '선수 선택') + '</h2></div>' +
       '<button class="icon-btn" type="button" data-act="close" aria-label="닫기">✕</button></div><div class="roster">' +
       list.map(function (p, i) {
-        var r = GG.getRank(p.points), off = !login && (p.id === other || p.away);
-        return '<button class="card" type="button" data-choose="' + esc(p.id) + '" data-side="' + sideKey + '"' + (off ? ' disabled' : '') + '>' +
-          '<div class="card-stage" style="background:' + tierGlow(r) + '"><span class="card-pos">' + (login ? p.no : i + 1) + '</span>' + crest(r, 34) + avatarFull(p) + '</div>' +
-          '<span class="card-name">' + esc(p.name) + '</span><span class="card-tier">' + (p.away ? '쉬는 중' : r.label) + '</span></button>';
+        var r = GG.getRank(p.points), off = !login && (p.id === other || p.away || (personal() && p.id === me));
+        return '<button class="card' + (p.teacher ? ' teacher-card' : '') + '" type="button" data-choose="' + esc(p.id) + '" data-side="' + sideKey + '"' + (off ? ' disabled' : '') + '>' +
+          '<div class="card-stage" style="background:' + tierGlow(r) + '"><span class="card-pos">' + (p.teacher ? 'T' : login ? p.no : i) + '</span>' + crest(r, 34) + avatarFull(p) + '</div>' +
+          '<span class="card-name">' + esc(p.name) + '</span><span class="card-tier">' + (p.teacher ? '선생님 · 이기면 대박' : p.away ? '쉬는 중' : r.label) + '</span></button>';
       }).join('') + '</div></div>');
   }
 
@@ -2100,7 +2270,7 @@ window.GG_CONFIG = {
         '<div class="feed-time">' + ago(m.t) + '</div></div><span class="' + (won ? 'up' : 'down') + '">' + (won ? '+' + m.gain : '−' + m.loss) + '</span></div>';
     }).join('') + '</div>' : '<p class="muted" style="margin:0">아직 대결 기록이 없어요.</p>';
     openLayer('<div class="modal" role="dialog" aria-modal="true" aria-label="' + esc(p.name) + ' 프로필">' +
-      '<div class="modal-head"><span class="eyebrow">Rank #' + placeOf(p) + '</span><button class="icon-btn" type="button" data-act="close" aria-label="닫기">✕</button></div>' +
+      '<div class="modal-head"><span class="eyebrow">' + (p.teacher ? 'Teacher · 랭킹 제외 · LP 고정' : 'Rank #' + placeOf(p)) + (p.streak >= 3 ? ' <span class="streak-tag">ON FIRE ' + p.streak + '</span>' : '') + '</span><button class="icon-btn" type="button" data-act="close" aria-label="닫기">✕</button></div>' +
       '<div class="profile-top"><div class="profile-stage" style="background:' + tierGlow(r) + '">' + avatarFull(p) + '</div>' +
       '<div class="section" style="gap:10px"><h1>' + esc(p.name) + '</h1><div class="profile-rank">' + crest(r, 74) +
       '<div><div class="rank-en">' + r.tier.en + '</div><div class="rank-name" style="color:' + r.tier.light + '">' + r.label + '</div>' + lp(p.points) + '</div></div>' +
@@ -2120,7 +2290,7 @@ window.GG_CONFIG = {
   var wardrobe = null; // { id, draft, tab, tier }
   function openCustomize(id) {
     var p = byId(id);
-    wardrobe = { id: id, draft: Object.assign({}, p.look), tab: wardrobe && wardrobe.id === id ? wardrobe.tab : 'body', tier: GG.getRank(Math.max(p.peak || 0, p.points)).tierIndex };
+    wardrobe = { id: id, draft: Object.assign({}, p.look), tab: wardrobe && wardrobe.id === id ? wardrobe.tab : 'body', tier: GG.getRank(Math.max(p.peak || 0, p.points)).tierIndex, teacher: !!p.teacher };
     drawWardrobe();
   }
   function drawWardrobe() {
@@ -2137,14 +2307,14 @@ window.GG_CONFIG = {
         }).join('') + '</div>';
       } else {
         body = '<div class="wd-items">' + row.items.map(function (it) {
-          var locked = it.unlock && it.unlock > w.tier;
+          var locked = AV.isLocked(row.key, it.id, w.tier, w.teacher);
           var look = Object.assign({}, w.draft); look[row.key] = it.id;
           var pic = AV.render(look, { mode: row.view === 'head' ? 'head' : 'full', size: 54, no: p.no });
-          var lockTier = locked ? GG.TIERS[it.unlock] : null;
+          var lockTier = locked && !it.teacher ? GG.TIERS[it.unlock] : null;
           return '<button class="wd-item' + (w.draft[row.key] === it.id ? ' on' : '') + (locked ? ' locked' : '') + '" type="button" data-wear="' + row.key + '" data-val="' + it.id + '"' +
-            (locked ? ' aria-disabled="true" title="' + lockTier.name + ' 달성 시 열려요"' : '') + '>' +
-            '<span class="wd-pic">' + pic + (locked ? '<span class="wd-lock">' + crest(GG.getRank(lockTier.min), 26) + '</span>' : '') + '</span>' +
-            '<span class="wd-name">' + it.name + '</span>' + (locked ? '<span class="wd-req" style="color:' + lockTier.light + '">' + lockTier.name + '</span>' : '') + '</button>';
+            (locked ? ' aria-disabled="true" title="' + (lockTier ? lockTier.name + ' 달성 시 열려요' : '선생님 전용') + '"' : '') + '>' +
+            '<span class="wd-pic">' + pic + (lockTier ? '<span class="wd-lock">' + crest(GG.getRank(lockTier.min), 26) + '</span>' : '') + '</span>' +
+            '<span class="wd-name">' + it.name + '</span>' + (locked ? (lockTier ? '<span class="wd-req" style="color:' + lockTier.light + '">' + lockTier.name + '</span>' : '<span class="wd-req teacher">선생님 전용</span>') : (it.teacher ? '<span class="wd-req teacher">선생님 전용</span>' : '')) + '</button>';
         }).join('') + '</div>';
       }
       return '<div class="form-row"><span class="label">' + row.label + '</span>' + body + '</div>';
@@ -2163,6 +2333,7 @@ window.GG_CONFIG = {
 
   /* 본인 확인: 학생 비밀번호(체크리스트와 같음) 또는 선생님 비밀번호 */
   function verifyStudent(id, title, desc, onOk) {
+    if (id === TEACHER_ID) return verifyTeacher(onOk);
     store.hasPin(id).then(function (has) {
       if (!has) return setupPin(id, onOk);
       openLayer('<div class="modal modal-sm pin-wrap" role="dialog" aria-modal="true" aria-label="' + esc(title) + '">' +
@@ -2265,7 +2436,7 @@ window.GG_CONFIG = {
     // LP 숫자 올라가기 + 막대 채우기
     var counter = document.getElementById('gain-count'), start = performance.now();
     (function tick(now) {
-      var k = Math.min(1, (now - start) / 900);
+      var k = Math.max(0, Math.min(1, (now - start) / 900));
       if (!counter.isConnected) return;
       counter.textContent = '+' + Math.round(m.gain * (1 - Math.pow(1 - k, 3)));
       if (k < 1) requestAnimationFrame(tick);
@@ -2362,6 +2533,7 @@ window.GG_CONFIG = {
     if (d.choose) {
       if (d.side === 'login') {
         var who0 = d.choose; closeLayer();
+        if (who0 === TEACHER_ID) return verifyTeacher(function () { setMe(TEACHER_ID); toast('선생님 계정으로 로그인했어요'); });
         return verifyStudent(who0, who0 + ' 로그인', '해바라기 체크리스트와 같은 비밀번호 4자리를 넣어 주세요.', function () { setMe(who0); toast(who0 + ' 로그인했어요'); });
       }
       ui[d.side] = d.choose; closeLayer(); return render();
@@ -2375,7 +2547,7 @@ window.GG_CONFIG = {
     if (d.win) return recordWin(d.win);
     if (d.wtab) { wardrobe.tab = d.wtab; return drawWardrobe(); }
     if (d.wear) {
-      if (AV.isLocked(d.wear, d.val, wardrobe.tier)) { toast(AV.findItem(d.wear, d.val).name + ' — ' + GG.TIERS[AV.findItem(d.wear, d.val).unlock].name + ' 티어에 오르면 열려요'); return; }
+      if (AV.isLocked(d.wear, d.val, wardrobe.tier, wardrobe.teacher)) { var li = AV.findItem(d.wear, d.val); toast(li.name + ' — ' + (li.teacher ? '선생님만 쓸 수 있어요' : GG.TIERS[li.unlock].name + ' 티어에 오르면 열려요')); return; }
       wardrobe.draft[d.wear] = d.val; drawWardrobe();
       return;
     }
@@ -2519,22 +2691,23 @@ window.GG_CONFIG = {
       case 'customize':
         var who = byId(d.id);
         if (who.id === me) { openCustomize(who.id); break; }
+        if (who.teacher) { verifyTeacher(function () { openCustomize(who.id); }); break; }
         verifyStudent(who.id, who.name + ' 확인', '내 캐릭터는 나만 꾸밀 수 있어요. 비밀번호를 넣어 주세요.', function () { openCustomize(who.id); });
         break;
       case 'save-look':
-        store.updatePlayer(wardrobe.id, AV.allowed(wardrobe.draft, wardrobe.tier)).then(function () { closeLayer(); toast('캐릭터를 저장했어요'); }, fail);
+        store.updatePlayer(wardrobe.id, AV.allowed(wardrobe.draft, wardrobe.tier, wardrobe.teacher)).then(function () { closeLayer(); toast('캐릭터를 저장했어요'); }, fail);
         break;
       case 'wd-random':
         AV.TABS.forEach(function (t) {
           t.rows.forEach(function (row) {
-            var opts = row.colors || row.items.filter(function (it) { return !(it.unlock && it.unlock > wardrobe.tier); }).map(function (it) { return it.id; });
+            var opts = row.colors || row.items.filter(function (it) { return !AV.isLocked(row.key, it.id, wardrobe.tier, wardrobe.teacher); }).map(function (it) { return it.id; });
             wardrobe.draft[row.key] = opts[Math.floor(Math.random() * opts.length)];
           });
         });
         drawWardrobe();
         break;
       case 'wd-reset':
-        wardrobe.draft = AV.defaults(ROSTER.map(function (st) { return st.name; }).indexOf(wardrobe.id)); drawWardrobe();
+        wardrobe.draft = wardrobe.teacher ? AV.teacherDefaults() : AV.defaults(ROSTER.map(function (st) { return st.name; }).indexOf(wardrobe.id)); drawWardrobe();
         break;
       case 'undo-now':
         store.deleteMatch(d.id).then(function () { closeLayer(); toast('방금 대결을 취소했어요'); }, fail);
@@ -2560,7 +2733,8 @@ window.GG_CONFIG = {
           lossShield: document.getElementById('set-shield').checked,
           startPoints: parseInt(document.getElementById('set-start').value, 10) || 0,
           streakBonus: document.getElementById('set-streak').checked,
-          seasonEnd: document.getElementById('set-end').value
+          seasonEnd: document.getElementById('set-end').value,
+          teacherLP: parseInt(document.getElementById('set-tlp').value, 10) || 1400
         })).then(function () { toast('규칙을 저장했어요'); }, fail);
         break;
       case 'copy-backup':
@@ -2640,9 +2814,10 @@ window.GG_CONFIG = {
     if (SHEET) {
       ROSTER = d.roster || [];
       LEAGUE = d.league || LEAGUE; SEASON = d.season || SEASON;
-      if (me && !ROSTER.some(function (st) { return st.name === me; })) { me = null; }
+      if (me && me !== TEACHER_ID && !ROSTER.some(function (st) { return st.name === me; })) { me = null; }
     }
-    calc = GG.replay(ROSTER.map(function (st) { return st.name; }), d.matches, d.settings, d.adjusts);
+    var fixed = {}; fixed[TEACHER_ID] = (d.settings && d.settings.teacherLP) || 1400;
+    calc = GG.replay(ROSTER.map(function (st) { return st.name; }).concat([TEACHER_ID]), d.matches, d.settings, d.adjusts, fixed);
     render();
     fresh = fresh.filter(function (m) { return !wantResult[m.id]; }).map(function (m) { return matchById(m.id); }).filter(Boolean);
     if (!showWanted() && fresh.length && !layer.querySelector('.result')) showResult(fresh[fresh.length - 1]);

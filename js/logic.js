@@ -198,11 +198,13 @@
   /* 경기 기록(원본)을 시간 순서대로 다시 계산해 모든 선수 점수와 경기별 결과를 만든다.
      기록을 고치거나 지워도 이것만 다시 돌리면 된다. */
   /* adjusts: 선생님이 직접 더하거나 뺀 LP [{id, p: 이름, d: +/-LP, note, t}]. 승패·연승에는 영향 없음 */
-  function replay(ids, matches, settings, adjusts) {
+  /* fixed: 점수가 고정된 선수 {id: LP} (선생님 계정) */
+  function replay(ids, matches, settings, adjusts, fixed) {
+    fixed = fixed || {};
     var s = Object.assign({}, DEFAULT_SETTINGS, settings || {});
     var P = {};
     function get(id) {
-      if (!P[id]) P[id] = { id: id, points: s.startPoints, wins: 0, losses: 0, streak: 0, bestStreak: 0, peak: s.startPoints, adjusted: 0 };
+      if (!P[id]) P[id] = { id: id, points: id in fixed ? fixed[id] : s.startPoints, wins: 0, losses: 0, streak: 0, bestStreak: 0, peak: s.startPoints, adjusted: 0 };
       return P[id];
     }
     (ids || []).forEach(get);
@@ -213,6 +215,7 @@
     events.forEach(function (e) {
       var m = e.v;
       if (e.k === 'j') {
+        if (m.p in fixed) return;
         var p = get(m.p), before = p.points;
         p.points = Math.max(0, p.points + (Number(m.d) || 0));
         p.peak = Math.max(p.peak, p.points);
@@ -229,6 +232,8 @@
         after: { a: out.winner.points, b: out.loser.points }
       });
       Object.assign(w, out.winner); Object.assign(l, out.loser);
+      if (w.id in fixed) { w.points = w.peak = fixed[w.id]; results[results.length - 1].after.a = w.points; }
+      if (l.id in fixed) { l.points = l.peak = fixed[l.id]; results[results.length - 1].after.b = l.points; }
     });
     return { players: P, matches: results, adjusts: adj };
   }

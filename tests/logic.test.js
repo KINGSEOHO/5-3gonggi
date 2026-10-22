@@ -94,3 +94,13 @@ test('선생님 LP 조정: 점수만 바뀌고 승패·연승은 그대로, 0 �
   assert.strictEqual(r.adjusts[0].before + 50, r.adjusts[0].after);
   assert.strictEqual(r.matches.length, 2);
 });
+
+test('선생님 계정: LP 고정, 이기면 학생이 크게 얻음', () => {
+  const ms = [{ id: '1', a: 'kid', b: '선생님', t: 1 }, { id: '2', a: '선생님', b: 'kid', t: 2 }];
+  const r = GG.replay(['kid', '선생님'], ms, {}, [{ id: 'j', p: '선생님', d: 50, t: 3 }], { '선생님': 1400 });
+  assert.strictEqual(r.players['선생님'].points, 1400);
+  assert.strictEqual(r.players['선생님'].wins, 1);
+  assert.ok(r.matches[0].gain > 60, 'gain ' + r.matches[0].gain);
+  assert.ok(r.matches[0].upset);
+  assert.strictEqual(r.adjusts.length, 0);
+});

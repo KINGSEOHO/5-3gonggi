@@ -127,7 +127,8 @@ function pinOf_(name) {
   return row ? String(sheet_(TAB.pins).getRange(row, 2).getValue()) : '';
 }
 function names_() { return state_().roster.map(function (s) { return s.name; }); }
-function mustStudent_(name) { if (names_().indexOf(name) === -1) throw new Error('명단에 없는 이름이에요: ' + name); }
+var TEACHER_ID = '선생님'; // 선생님 계정 (명단에는 없지만 대결과 꾸미기를 할 수 있다)
+function mustStudent_(name) { if (name !== TEACHER_ID && names_().indexOf(name) === -1) throw new Error('명단에 없는 이름이에요: ' + name); }
 
 function handle_(req) {
   var a = req.action;
@@ -198,7 +199,7 @@ function handle_(req) {
     case 'updatePlayer':
       mustStudent_(req.id);
       var f = req.fields || {}, prow2 = findRow_(TAB.players, 0, req.id), shp = sheet_(TAB.players);
-      if ('away' in f) teacher_(req);
+      if ('away' in f || req.id === TEACHER_ID) teacher_(req);
       var cur = prow2 ? shp.getRange(prow2, 1, 1, 3).getValues()[0] : [req.id, '{}', false];
       var look = {};
       try { look = JSON.parse(cur[1] || '{}'); } catch (e) { look = {}; }

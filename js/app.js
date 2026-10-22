@@ -41,6 +41,9 @@
   var CLASS_LINK = location.origin + location.pathname + (SHEET ? '?sheet=' + sheetIdOf(SHEET_URL) : '');
 
   var AV = window.GGAvatar;
+  /* 선생님 계정: 랭킹에는 안 나오고, LP가 고정(기본 마스터 1400)이라 이기면 큰 보상 */
+  var TEACHER_ID = '선생님';
+  function teacherLP() { return (data && data.settings && data.settings.teacherLP) || 1400; }
   var NAV = [
     { id: 'home', label: '로비', icon: 'M12 2 3 7v10l9 5 9-5V7zm0 2.3 6.8 3.8L12 12 5.2 8.1zM5 9.8l6 3.4v6.6l-6-3.3zm8 10V13.2l6-3.4v6.7z' },
     { id: 'battle', label: '대결', icon: 'M4 3h3l7 7-1.5 1.5L4 4zm16 0v3l-9 9-1.5-1.5L18.5 4zM3 17l4-4 4 4-1.5 1.5L8 17l-3 3-2-2 3-3-1.5-1.5zm18 0-4-4-4 4 1.5 1.5L16 17l3 3 2-2-3-3z' },
@@ -58,9 +61,10 @@
   var ME_KEY = LIVE ? 'gonggi-me' : SHEET ? 'gonggi-me-' + sheetIdOf(SHEET_URL).slice(-12) : 'gonggi-me-demo';
   var me = null;
   try { me = localStorage.getItem(ME_KEY); } catch (e) { me = null; }
-  if (me && !ROSTER.some(function (st) { return st.name === me; })) me = null;
+  if (me && me !== TEACHER_ID && !ROSTER.some(function (st) { return st.name === me; })) me = null;
   function setMe(id) { me = id; try { if (id) localStorage.setItem(ME_KEY, id); else localStorage.removeItem(ME_KEY); } catch (e) { /* 무시 */ } render(); }
-  function personal() { return !!me && !ui.teacher; }
+  /* 선생님 계정으로 로그인하면 선생님도 '내 크롬북' 방식으로 대결한다 */
+  function personal() { return !!me && (!ui.teacher || me === TEACHER_ID); }
   var uid = 0;
   var prefs = loadPrefs();
 
@@ -109,7 +113,18 @@
     });
     return cache;
   }
+  var tcache = null;
+  function teacherPlayer() {
+    if (tcache && cache) return tcache;
+    var saved = (data && data.players[TEACHER_ID]) || {};
+    var stat = (calc && calc.players[TEACHER_ID]) || Object.assign(baseStats(), { points: teacherLP() });
+    var look = Object.assign(AV.teacherDefaults(), {});
+    Object.keys(look).forEach(function (k) { if (saved[k]) look[k] = saved[k]; });
+    tcache = Object.assign({ away: false }, saved, stat, { id: TEACHER_ID, name: TEACHER_ID, no: 0, teacher: true, look: look });
+    return tcache;
+  }
   function byId(id) {
+    if (id === TEACHER_ID) return teacherPlayer();
     var list = players();
     for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
     return null;
@@ -120,6 +135,7 @@
     });
   }
   function placeOf(p) { return sorted().indexOf(p) + 1; }
+  function nameTag(p) { return p.teacher ? ' <span class="teacher-tag">선생님</span>' : ''; }
   function matches() { return (calc && calc.matches) || []; }
   function adjusts() { return (calc && calc.adjusts) || []; }
   function matchById(id) { var ms = matches(); for (var i = ms.length - 1; i >= 0; i--) if (ms[i].id === id) return ms[i]; return null; }
@@ -135,7 +151,7 @@
     return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
   }
   /* 블록 캐릭터 (그리기는 js/avatar.js) */
-  function avatarFull(p) { return AV.render(p.look || AV.normalize(p, 0), { no: p.no }); }
+  function avatarFull(p) { return AV.render(p.look || AV.normalize(p, 0), { no: p.no, streak: p.streak > 0 ? p.streak : 0 }); }
   function headshot(p, size) { return AV.render(p.look || AV.normalize(p, 0), { mode: 'head', size: size || 34, no: p.no }); }
 
   /* 티어 엠블럼 — 티어가 오를수록 날개, 뿔, 왕관, 후광이 붙는다 */
@@ -219,7 +235,7 @@
 
   var lastRoute = null;
   function render() {
-    cache = null;
+    cache = null; tcache = null;
     var r = route();
     renderNav(r);
     if (OFFLINE) {
@@ -442,7 +458,7 @@
       var fixed = personal() && key === 'a';
       return '<div class="side ' + cls + '">' + head +
         '<div class="side-glow" style="background:radial-gradient(circle,' + r.tier.color + '66,transparent 65%)"></div>' +
-        avatarFull(p) + '<div class="side-name">' + esc(p.name) + '</div>' +
+        avatarFull(p) + (p.streak >= 3 ? '<span class="streak-tag">ON FIRE · ' + p.streak + '연승</span>' : '') + '<div class="side-name">' + esc(p.name) + nameTag(p) + '</div>' +
         '<div class="tier-tag">' + crest(r, 40) + '<span>' + r.label + '</span></div>' +
         '<div>' + lp(p.points) + ' ' + streakPill(p) + '</div>' +
         (mine ? '<div class="stakes"><span class="stake up">승리 +' + mine.win + '</span><span class="stake down">패배 −' + mine.lose + '</span></div>' : '') +
@@ -482,7 +498,15 @@
     return esc(low.name) + '이(가) 이기면 <b class="up">+' + lowWin + ' LP</b> 대역전. ' + esc(high.name) + '은(는) 지면 <b class="down">−' + highLose + ' LP</b>를 잃어요.';
   }
 
+  function teacherChallenge(a) {
+    if (a.teacher) return '';
+    var t = teacherPlayer(), pv = GG.preview(a, t, settings());
+    return '<button class="rec-item teacher-card" type="button" data-opp="' + TEACHER_ID + '" style="margin:0">' + headshot(t, 44) +
+      '<span style="min-width:0"><b>선생님에게 도전!</b> <span class="teacher-tag">BOSS</span><span class="muted" style="display:block;font-size:12px">선생님은 마스터급 LP로 고정돼요. 이기면 엄청난 보상</span></span>' +
+      '<span class="rec-gain"><span class="up">+' + pv.a.win + '</span><br><span class="down">−' + pv.a.lose + '</span></span></button>';
+  }
   function recommendView(a) {
+    if (a.teacher) return '<section class="panel section"><h2>도전자를 기다리는 중</h2><p class="muted" style="margin:0">선생님 LP는 고정이에요. 아이들이 이기면 큰 보상을 받아요. 상대 고르기에서 학생을 골라 주세요.</p></section>';
     var rec = GG.recommend(a, players(), matches(), settings());
     function item(c) {
       var r = GG.getRank(c.student.points);
@@ -497,7 +521,7 @@
     return '<section class="panel section"><div class="section-head"><h2>' + esc(a.name) + '의 추천 상대</h2></div><div class="rec-groups">' +
       group('호적수', '점수가 가깝고 최근에 붙지 않은 친구', rec.close, '추천할 친구가 없어요') +
       group('도전', '조금 높은 티어. 이기면 큰 보상', rec.challenge, '이미 정상에 있어요') +
-      group('첫 만남', '아직 한 번도 겨루지 않은 친구', rec.fresh, '더 추천할 친구가 없어요') + '</div></section>';
+      group('첫 만남', '아직 한 번도 겨루지 않은 친구', rec.fresh, '더 추천할 친구가 없어요') + '</div>' + teacherChallenge(a) + '</section>';
   }
 
   function pairsView() {
@@ -636,6 +660,8 @@
       '<label class="check"><input type="checkbox" id="set-shield"' + (s.lossShield ? ' checked' : '') + '> 연패 보호 (3연패부터 잃는 LP 절반)</label>' +
       '<div class="form-row"><label for="set-start">시즌 시작 LP</label><select class="input" id="set-start">' +
       [0, 200, 400, 600].map(function (v) { return '<option value="' + v + '"' + (s.startPoints === v ? ' selected' : '') + '>' + v + ' LP (' + GG.getRank(v).label + ')</option>'; }).join('') + '</select></div>' +
+      '<div class="form-row"><label for="set-tlp">선생님 계정 LP (보스 난이도, 높을수록 이겼을 때 보상이 커요)</label><select class="input" id="set-tlp">' +
+      [800, 1000, 1200, 1400, 1700, 2000].map(function (v) { return '<option value="' + v + '"' + (teacherLP() === v ? ' selected' : '') + '>' + v + ' LP (' + GG.getRank(v).label + ')</option>'; }).join('') + '</select></div>' +
       '<div class="form-row"><label for="set-end">이번 시즌 종료일 (로비에 안내돼요)</label><input class="input" id="set-end" type="date" value="' + esc(seasonEnd()) + '"></div>' +
       '<label class="check"><input type="checkbox" id="set-streak"' + (s.streakBonus ? ' checked' : '') + '> 연승 보너스</label>' +
       '<div class="row-actions"><button class="btn btn-gold" type="button" data-act="save-settings">규칙 저장</button></div>' +
@@ -709,14 +735,14 @@
   function openPicker(sideKey) {
     var login = sideKey === 'login';
     var other = login ? null : sideKey === 'a' ? ui.b : ui.a;
-    var list = login ? players().slice() : sorted();
+    var list = [teacherPlayer()].concat(login ? players().slice() : sorted());
     openLayer('<div class="modal modal-wide" role="dialog" aria-modal="true" aria-label="' + (login ? '내 이름 고르기' : '선수 선택') + '"><div class="modal-head"><div><span class="eyebrow">' + (login ? 'Sign In' : sideKey === 'a' ? 'Blue Side' : 'Red Side') + '</span><h2>' + (login ? '내 이름을 골라요' : '선수 선택') + '</h2></div>' +
       '<button class="icon-btn" type="button" data-act="close" aria-label="닫기">✕</button></div><div class="roster">' +
       list.map(function (p, i) {
-        var r = GG.getRank(p.points), off = !login && (p.id === other || p.away);
-        return '<button class="card" type="button" data-choose="' + esc(p.id) + '" data-side="' + sideKey + '"' + (off ? ' disabled' : '') + '>' +
-          '<div class="card-stage" style="background:' + tierGlow(r) + '"><span class="card-pos">' + (login ? p.no : i + 1) + '</span>' + crest(r, 34) + avatarFull(p) + '</div>' +
-          '<span class="card-name">' + esc(p.name) + '</span><span class="card-tier">' + (p.away ? '쉬는 중' : r.label) + '</span></button>';
+        var r = GG.getRank(p.points), off = !login && (p.id === other || p.away || (personal() && p.id === me));
+        return '<button class="card' + (p.teacher ? ' teacher-card' : '') + '" type="button" data-choose="' + esc(p.id) + '" data-side="' + sideKey + '"' + (off ? ' disabled' : '') + '>' +
+          '<div class="card-stage" style="background:' + tierGlow(r) + '"><span class="card-pos">' + (p.teacher ? 'T' : login ? p.no : i) + '</span>' + crest(r, 34) + avatarFull(p) + '</div>' +
+          '<span class="card-name">' + esc(p.name) + '</span><span class="card-tier">' + (p.teacher ? '선생님 · 이기면 대박' : p.away ? '쉬는 중' : r.label) + '</span></button>';
       }).join('') + '</div></div>');
   }
 
@@ -731,7 +757,7 @@
         '<div class="feed-time">' + ago(m.t) + '</div></div><span class="' + (won ? 'up' : 'down') + '">' + (won ? '+' + m.gain : '−' + m.loss) + '</span></div>';
     }).join('') + '</div>' : '<p class="muted" style="margin:0">아직 대결 기록이 없어요.</p>';
     openLayer('<div class="modal" role="dialog" aria-modal="true" aria-label="' + esc(p.name) + ' 프로필">' +
-      '<div class="modal-head"><span class="eyebrow">Rank #' + placeOf(p) + '</span><button class="icon-btn" type="button" data-act="close" aria-label="닫기">✕</button></div>' +
+      '<div class="modal-head"><span class="eyebrow">' + (p.teacher ? 'Teacher · 랭킹 제외 · LP 고정' : 'Rank #' + placeOf(p)) + (p.streak >= 3 ? ' <span class="streak-tag">ON FIRE ' + p.streak + '</span>' : '') + '</span><button class="icon-btn" type="button" data-act="close" aria-label="닫기">✕</button></div>' +
       '<div class="profile-top"><div class="profile-stage" style="background:' + tierGlow(r) + '">' + avatarFull(p) + '</div>' +
       '<div class="section" style="gap:10px"><h1>' + esc(p.name) + '</h1><div class="profile-rank">' + crest(r, 74) +
       '<div><div class="rank-en">' + r.tier.en + '</div><div class="rank-name" style="color:' + r.tier.light + '">' + r.label + '</div>' + lp(p.points) + '</div></div>' +
@@ -751,7 +777,7 @@
   var wardrobe = null; // { id, draft, tab, tier }
   function openCustomize(id) {
     var p = byId(id);
-    wardrobe = { id: id, draft: Object.assign({}, p.look), tab: wardrobe && wardrobe.id === id ? wardrobe.tab : 'body', tier: GG.getRank(Math.max(p.peak || 0, p.points)).tierIndex };
+    wardrobe = { id: id, draft: Object.assign({}, p.look), tab: wardrobe && wardrobe.id === id ? wardrobe.tab : 'body', tier: GG.getRank(Math.max(p.peak || 0, p.points)).tierIndex, teacher: !!p.teacher };
     drawWardrobe();
   }
   function drawWardrobe() {
@@ -768,14 +794,14 @@
         }).join('') + '</div>';
       } else {
         body = '<div class="wd-items">' + row.items.map(function (it) {
-          var locked = it.unlock && it.unlock > w.tier;
+          var locked = AV.isLocked(row.key, it.id, w.tier, w.teacher);
           var look = Object.assign({}, w.draft); look[row.key] = it.id;
           var pic = AV.render(look, { mode: row.view === 'head' ? 'head' : 'full', size: 54, no: p.no });
-          var lockTier = locked ? GG.TIERS[it.unlock] : null;
+          var lockTier = locked && !it.teacher ? GG.TIERS[it.unlock] : null;
           return '<button class="wd-item' + (w.draft[row.key] === it.id ? ' on' : '') + (locked ? ' locked' : '') + '" type="button" data-wear="' + row.key + '" data-val="' + it.id + '"' +
-            (locked ? ' aria-disabled="true" title="' + lockTier.name + ' 달성 시 열려요"' : '') + '>' +
-            '<span class="wd-pic">' + pic + (locked ? '<span class="wd-lock">' + crest(GG.getRank(lockTier.min), 26) + '</span>' : '') + '</span>' +
-            '<span class="wd-name">' + it.name + '</span>' + (locked ? '<span class="wd-req" style="color:' + lockTier.light + '">' + lockTier.name + '</span>' : '') + '</button>';
+            (locked ? ' aria-disabled="true" title="' + (lockTier ? lockTier.name + ' 달성 시 열려요' : '선생님 전용') + '"' : '') + '>' +
+            '<span class="wd-pic">' + pic + (lockTier ? '<span class="wd-lock">' + crest(GG.getRank(lockTier.min), 26) + '</span>' : '') + '</span>' +
+            '<span class="wd-name">' + it.name + '</span>' + (locked ? (lockTier ? '<span class="wd-req" style="color:' + lockTier.light + '">' + lockTier.name + '</span>' : '<span class="wd-req teacher">선생님 전용</span>') : (it.teacher ? '<span class="wd-req teacher">선생님 전용</span>' : '')) + '</button>';
         }).join('') + '</div>';
       }
       return '<div class="form-row"><span class="label">' + row.label + '</span>' + body + '</div>';
@@ -794,6 +820,7 @@
 
   /* 본인 확인: 학생 비밀번호(체크리스트와 같음) 또는 선생님 비밀번호 */
   function verifyStudent(id, title, desc, onOk) {
+    if (id === TEACHER_ID) return verifyTeacher(onOk);
     store.hasPin(id).then(function (has) {
       if (!has) return setupPin(id, onOk);
       openLayer('<div class="modal modal-sm pin-wrap" role="dialog" aria-modal="true" aria-label="' + esc(title) + '">' +
@@ -896,7 +923,7 @@
     // LP 숫자 올라가기 + 막대 채우기
     var counter = document.getElementById('gain-count'), start = performance.now();
     (function tick(now) {
-      var k = Math.min(1, (now - start) / 900);
+      var k = Math.max(0, Math.min(1, (now - start) / 900));
       if (!counter.isConnected) return;
       counter.textContent = '+' + Math.round(m.gain * (1 - Math.pow(1 - k, 3)));
       if (k < 1) requestAnimationFrame(tick);
@@ -993,6 +1020,7 @@
     if (d.choose) {
       if (d.side === 'login') {
         var who0 = d.choose; closeLayer();
+        if (who0 === TEACHER_ID) return verifyTeacher(function () { setMe(TEACHER_ID); toast('선생님 계정으로 로그인했어요'); });
         return verifyStudent(who0, who0 + ' 로그인', '해바라기 체크리스트와 같은 비밀번호 4자리를 넣어 주세요.', function () { setMe(who0); toast(who0 + ' 로그인했어요'); });
       }
       ui[d.side] = d.choose; closeLayer(); return render();
@@ -1006,7 +1034,7 @@
     if (d.win) return recordWin(d.win);
     if (d.wtab) { wardrobe.tab = d.wtab; return drawWardrobe(); }
     if (d.wear) {
-      if (AV.isLocked(d.wear, d.val, wardrobe.tier)) { toast(AV.findItem(d.wear, d.val).name + ' — ' + GG.TIERS[AV.findItem(d.wear, d.val).unlock].name + ' 티어에 오르면 열려요'); return; }
+      if (AV.isLocked(d.wear, d.val, wardrobe.tier, wardrobe.teacher)) { var li = AV.findItem(d.wear, d.val); toast(li.name + ' — ' + (li.teacher ? '선생님만 쓸 수 있어요' : GG.TIERS[li.unlock].name + ' 티어에 오르면 열려요')); return; }
       wardrobe.draft[d.wear] = d.val; drawWardrobe();
       return;
     }
@@ -1150,22 +1178,23 @@
       case 'customize':
         var who = byId(d.id);
         if (who.id === me) { openCustomize(who.id); break; }
+        if (who.teacher) { verifyTeacher(function () { openCustomize(who.id); }); break; }
         verifyStudent(who.id, who.name + ' 확인', '내 캐릭터는 나만 꾸밀 수 있어요. 비밀번호를 넣어 주세요.', function () { openCustomize(who.id); });
         break;
       case 'save-look':
-        store.updatePlayer(wardrobe.id, AV.allowed(wardrobe.draft, wardrobe.tier)).then(function () { closeLayer(); toast('캐릭터를 저장했어요'); }, fail);
+        store.updatePlayer(wardrobe.id, AV.allowed(wardrobe.draft, wardrobe.tier, wardrobe.teacher)).then(function () { closeLayer(); toast('캐릭터를 저장했어요'); }, fail);
         break;
       case 'wd-random':
         AV.TABS.forEach(function (t) {
           t.rows.forEach(function (row) {
-            var opts = row.colors || row.items.filter(function (it) { return !(it.unlock && it.unlock > wardrobe.tier); }).map(function (it) { return it.id; });
+            var opts = row.colors || row.items.filter(function (it) { return !AV.isLocked(row.key, it.id, wardrobe.tier, wardrobe.teacher); }).map(function (it) { return it.id; });
             wardrobe.draft[row.key] = opts[Math.floor(Math.random() * opts.length)];
           });
         });
         drawWardrobe();
         break;
       case 'wd-reset':
-        wardrobe.draft = AV.defaults(ROSTER.map(function (st) { return st.name; }).indexOf(wardrobe.id)); drawWardrobe();
+        wardrobe.draft = wardrobe.teacher ? AV.teacherDefaults() : AV.defaults(ROSTER.map(function (st) { return st.name; }).indexOf(wardrobe.id)); drawWardrobe();
         break;
       case 'undo-now':
         store.deleteMatch(d.id).then(function () { closeLayer(); toast('방금 대결을 취소했어요'); }, fail);
@@ -1191,7 +1220,8 @@
           lossShield: document.getElementById('set-shield').checked,
           startPoints: parseInt(document.getElementById('set-start').value, 10) || 0,
           streakBonus: document.getElementById('set-streak').checked,
-          seasonEnd: document.getElementById('set-end').value
+          seasonEnd: document.getElementById('set-end').value,
+          teacherLP: parseInt(document.getElementById('set-tlp').value, 10) || 1400
         })).then(function () { toast('규칙을 저장했어요'); }, fail);
         break;
       case 'copy-backup':
@@ -1271,9 +1301,10 @@
     if (SHEET) {
       ROSTER = d.roster || [];
       LEAGUE = d.league || LEAGUE; SEASON = d.season || SEASON;
-      if (me && !ROSTER.some(function (st) { return st.name === me; })) { me = null; }
+      if (me && me !== TEACHER_ID && !ROSTER.some(function (st) { return st.name === me; })) { me = null; }
     }
-    calc = GG.replay(ROSTER.map(function (st) { return st.name; }), d.matches, d.settings, d.adjusts);
+    var fixed = {}; fixed[TEACHER_ID] = (d.settings && d.settings.teacherLP) || 1400;
+    calc = GG.replay(ROSTER.map(function (st) { return st.name; }).concat([TEACHER_ID]), d.matches, d.settings, d.adjusts, fixed);
     render();
     fresh = fresh.filter(function (m) { return !wantResult[m.id]; }).map(function (m) { return matchById(m.id); }).filter(Boolean);
     if (!showWanted() && fresh.length && !layer.querySelector('.result')) showResult(fresh[fresh.length - 1]);
