@@ -102,7 +102,9 @@
     if (shield) loss = Math.ceil(loss / 2);
     loss = Math.min(loss, loserPoints); // 0 아래로는 안 내려감
 
-    var bonus = s.streakBonus ? streakBonusFor((winnerStreak || 0) + 1) : 0;
+    // 연승 보너스도 기준 LP에 비례 (기준 25일 때 +3/+5/+8)
+    var rawBonus = s.streakBonus ? streakBonusFor((winnerStreak || 0) + 1) : 0;
+    var bonus = rawBonus ? Math.max(1, Math.round(rawBonus * base / 25)) : 0;
     var upset = getRank(loserPoints).value - getRank(winnerPoints).value >= 4; // 한 티어 이상 위를 이김
     return { gain: gain, bonus: bonus, total: gain + bonus, loss: loss, shield: shield, upset: upset, winChance: eWin };
   }

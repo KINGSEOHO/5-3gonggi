@@ -47,6 +47,8 @@
   /* 설정의 LP 값(시작·선생님)은 '챌린저 2000 기준'이라 티어 구간 배율을 곱해 쓴다 */
   function tscale() { return Number(data && data.settings && data.settings.tierScale) || 1; }
   function scaled(v) { return Math.round(v * tscale()); }
+  /* 선생님 LP 빠른 버튼: 기준 LP 25일 때 ±5/10/20, 기준이 작으면 비례해서 작게 */
+  function qlp(n) { var b = (data && data.settings && data.settings.baseLP) || 25; var v = Math.round(n * b / 25); return v === 0 ? (n > 0 ? 1 : -1) : v; }
   var NAV = [
     { id: 'home', label: '로비', icon: 'M12 2 3 7v10l9 5 9-5V7zm0 2.3 6.8 3.8L12 12 5.2 8.1zM5 9.8l6 3.4v6.6l-6-3.3zm8 10V13.2l6-3.4v6.7z' },
     { id: 'battle', label: '대결', icon: 'M4 3h3l7 7-1.5 1.5L4 4zm16 0v3l-9 9-1.5-1.5L18.5 4zM3 17l4-4 4 4-1.5 1.5L8 17l-3 3-2-2 3-3-1.5-1.5zm18 0-4-4-4 4 1.5 1.5L16 17l3 3 2-2-3-3z' },
@@ -629,7 +631,7 @@
       '<p>시즌 시작 시 모두 <b>' + GG.getRank(s.startPoints).label + '</b>(' + s.startPoints + ' LP)에서 출발해요.</p>' +
       '<p><b>피라미드:</b> 낮은 티어에서는 이기면 크게 오르고 져도 조금만 내려가요. 높은 티어로 갈수록 이겨도 조금 오르고 지면 많이 내려가요. 그래서 위로 갈수록 사람이 적어요.</p>' +
       '<p><b>티어 차이:</b> 나보다 높은 티어를 이기면 훨씬 많이 얻고, 낮은 티어를 이기면 조금만 얻어요. 높은 티어가 낮은 티어에게 지면 크게 잃어요.</p>' +
-      (s.streakBonus ? '<p><b>연승 보너스:</b> 3연승 +3, 4연승 +5, 5연승부터 +8.</p>' : '') +
+      (s.streakBonus ? '<p><b>연승 보너스:</b> 3연승 +' + GG.calcMatch(0, 0, 2, s).bonus + ', 4연승 +' + GG.calcMatch(0, 0, 3, s).bonus + ', 5연승부터 +' + GG.calcMatch(0, 0, 9, s).bonus + '.</p>' : '') +
       (s.lossShield ? '<p><b>연패 보호:</b> 3연패부터는 잃는 LP가 절반이에요.</p>' : '') +
       '<p>결과는 <b>진 친구가 확인</b>해야 기록돼요. LP는 0 아래로 내려가지 않아요.</p></section>' +
       '<section class="panel section"><h2>티어별 LP (비슷한 상대)</h2><div class="table-wrap"><table class="example-table"><thead><tr><th>티어</th><th>이기면</th><th>지면</th></tr></thead><tbody>' + per + '</tbody></table></div>' +
@@ -659,18 +661,18 @@
           '<label class="check" style="font-size:13px"><input type="checkbox" data-away="' + esc(p.id) + '"' + (p.away ? ' checked' : '') + '> 쉬는 중</label></div>';
       }).join('') + '</div></section>' +
       '<div class="section"><section class="panel gilded section"><h2>LP 규칙</h2>' +
-      '<div class="form-row"><label for="set-base">기준 LP (골드끼리 대결할 때 오르내리는 LP)</label><input class="input" id="set-base" type="number" min="10" max="60" value="' + (s.baseLP || 25) + '"></div>' +
+      '<div class="form-row"><label for="set-base">기준 LP (골드끼리 대결할 때 오르내리는 LP · 챌린저 LP가 작으면 같이 줄여요)</label><input class="input" id="set-base" type="number" min="5" max="60" value="' + (s.baseLP || 25) + '"></div>' +
       '<p class="muted" style="margin:0;font-size:13px">티어마다 이 값에 배율이 곱해져요. 낮은 티어는 많이 얻고 적게 잃고, 높은 티어는 적게 얻고 많이 잃어요. 바꾸면 지난 경기까지 모두 다시 계산돼요.</p>' +
       '<label class="check"><input type="checkbox" id="set-shield"' + (s.lossShield ? ' checked' : '') + '> 연패 보호 (3연패부터 잃는 LP 절반)</label>' +
       '<div class="form-row"><label for="set-start">시즌 시작 LP</label><select class="input" id="set-start">' +
       [0, 200, 400, 600].map(function (v) { return '<option value="' + v + '"' + (s.startPoints === v ? ' selected' : '') + '>' + GG.getRank(scaled(v)).label + ' (' + scaled(v) + ' LP)</option>'; }).join('') + '</select></div>' +
       '<div class="form-row"><label for="set-chall">티어 구간 (챌린저가 되는 LP)</label><select class="input" id="set-chall">' +
-      [[2000, '2000 LP · 기본 (아주 길어요)'], [1400, '1400 LP'], [1000, '1000 LP'], [800, '800 LP'], [700, '700 LP · 2주 시즌 추천'], [600, '600 LP']].map(function (o) {
+      [[2000, '2000 LP · 기본 (아주 길어요)'], [1400, '1400 LP'], [1000, '1000 LP'], [700, '700 LP'], [400, '400 LP'], [200, '200 LP · 2주 시즌 추천 (티어 이동이 빠름)']].map(function (o) {
         return '<option value="' + o[0] + '"' + (Math.round(tscale() * 2000) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
       '<div class="form-row"><label for="set-pyr">피라미드 강도 (높은 티어에서 얼마나 오르기 어렵게)</label><select class="input" id="set-pyr">' +
       [[1, '강함 · 기본'], [0.5, '보통 · 추천'], [0.3, '약함']].map(function (o) { return '<option value="' + o[0] + '"' + ((s.pyramid == null ? 1 : s.pyramid) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
       '<div class="form-row"><label for="set-elo">실력 차 반영 (잘하는 친구가 약한 친구를 이겼을 때도 오르는 정도)</label><select class="input" id="set-elo">' +
-      [[400, '좁게 · 기본'], [800, '보통 · 추천'], [1200, '넓게']].map(function (o) { return '<option value="' + o[0] + '"' + ((s.eloScale || 400) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
+      [[300, '아주 좁게 · 챌린저 200 추천'], [400, '좁게 · 기본'], [800, '보통'], [1200, '넓게']].map(function (o) { return '<option value="' + o[0] + '"' + ((s.eloScale || 400) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
       '<div class="row-actions" style="justify-content:flex-start"><button class="btn btn-sm" type="button" data-act="preset-2w">2주 시즌 추천값 채우기</button></div>' +
       '<p class="muted" style="margin:0;font-size:13px"><b>주의:</b> 규칙을 저장하면 이번 시즌 경기까지 새 규칙으로 다시 계산돼요. 새 시즌을 시작(시즌 초기화)한 뒤에 바꾸는 걸 추천해요.</p>' +
       '<div class="form-row"><label for="set-tlp">선생님 계정 LP (보스 난이도, 높을수록 이겼을 때 보상이 커요)</label><select class="input" id="set-tlp">' +
@@ -709,9 +711,9 @@
         return '<label class="adj-who' + (picks[p.id] ? ' on' : '') + '"><input type="checkbox" data-adjpick="' + esc(p.id) + '"' + (picks[p.id] ? ' checked' : '') + '>' + headshot(p, 26) + '<span>' + esc(p.name) + '</span></label>';
       }).join('') + '</div>' +
       '<div class="row-actions" style="justify-content:flex-start"><button class="btn btn-sm btn-ghost" type="button" data-act="adj-all">모두 고르기</button><button class="btn btn-sm btn-ghost" type="button" data-act="adj-none">모두 빼기</button></div>' +
-      '<div class="adj-row"><div class="form-row"><label for="adj-d">LP</label><input class="input" id="adj-d" type="number" step="1" value="' + (ui.adjD || 10) + '"></div>' +
+      '<div class="adj-row"><div class="form-row"><label for="adj-d">LP</label><input class="input" id="adj-d" type="number" step="1" value="' + (ui.adjD || qlp(10)) + '"></div>' +
       '<div class="form-row" style="flex:1"><label for="adj-note">사유 (아이들에게 보여요)</label><input class="input" id="adj-note" maxlength="40" placeholder="예: 친구를 도와줌" value="' + esc(ui.adjNote || '') + '"></div></div>' +
-      '<div class="row-actions" style="justify-content:flex-start">' + [5, 10, 20, -5, -10].map(function (n) {
+      '<div class="row-actions" style="justify-content:flex-start">' + [5, 10, 20, -5, -10].map(qlp).map(function (n) {
         return '<button class="btn btn-sm' + (n < 0 ? ' btn-danger' : '') + '" type="button" data-adjquick="' + n + '">' + (n > 0 ? '+' : '−') + Math.abs(n) + '</button>';
       }).join('') + '<button class="btn btn-gold" type="button" data-act="adj-apply">적용</button></div>' +
       (recent.length ? '<h3>최근 조정</h3><div class="feed">' + recent.map(function (j) {
@@ -780,7 +782,7 @@
       '<div class="muted" style="font-size:13px">시즌 최고: ' + peak.label + ' (' + (p.peak || p.points) + ' LP)' + (p.adjusted ? ' · 선생님이 준 LP ' + (p.adjusted > 0 ? '+' : '−') + Math.abs(p.adjusted) : '') + '</div>' +
       '<div class="row-actions" style="justify-content:flex-start"><button class="btn btn-play" type="button" data-act="battle-with" data-id="' + esc(id) + '">PLAY <span class="ko">이 선수로 대결</span></button>' +
       '<button class="btn" type="button" data-act="customize" data-id="' + esc(id) + '">캐릭터 꾸미기</button></div>' +
-      (ui.teacher ? '<div class="row-actions" style="justify-content:flex-start;align-items:center"><span class="label">선생님 LP</span>' + [10, 5, -5, -10].map(function (n) {
+      (ui.teacher ? '<div class="row-actions" style="justify-content:flex-start;align-items:center"><span class="label">선생님 LP</span>' + [10, 5, -5, -10].map(qlp).map(function (n) {
         return '<button class="btn btn-sm' + (n < 0 ? ' btn-danger' : '') + '" type="button" data-adjone="' + esc(id) + '" data-adjv="' + n + '">' + (n > 0 ? '+' : '−') + Math.abs(n) + '</button>';
       }).join('') + '</div>' : '') +
       '<h3>최근 대결</h3>' + recent + '</div>');
@@ -1073,8 +1075,9 @@
         break;
       case 'login': openPicker('login'); break;
       case 'preset-2w':
-        document.getElementById('set-base').value = 30; document.getElementById('set-chall').value = '700';
-        document.getElementById('set-pyr').value = '0.5'; document.getElementById('set-elo').value = '800'; document.getElementById('set-start').value = '200';
+        // 챌린저 200 LP: 기준 LP를 같이 줄여야 한 판에 티어가 여러 칸씩 뛰지 않는다
+        document.getElementById('set-base').value = 10; document.getElementById('set-chall').value = '200';
+        document.getElementById('set-pyr').value = '0.5'; document.getElementById('set-elo').value = '300'; document.getElementById('set-start').value = '200';
         toast('추천값을 채웠어요. 새 시즌을 시작한 뒤 "규칙 저장"을 눌러 주세요');
         break;
       case 'hist-fold': ui.histOpen = !ui.histOpen; render(); break;
@@ -1234,7 +1237,7 @@
       case 'teacher-logout': ui.teacher = false; if (SHEET) store.teacherPw = ''; render(); break;
       case 'save-settings':
         store.saveSettings(Object.assign({}, settings(), {
-          baseLP: Math.max(10, Math.min(60, parseInt(document.getElementById('set-base').value, 10) || 25)),
+          baseLP: Math.max(5, Math.min(60, parseInt(document.getElementById('set-base').value, 10) || 25)),
           lossShield: document.getElementById('set-shield').checked,
           tierScale: (parseInt(document.getElementById('set-chall').value, 10) || 2000) / 2000,
           pyramid: parseFloat(document.getElementById('set-pyr').value),

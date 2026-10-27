@@ -117,3 +117,14 @@ test('티어 구간 배율·피라미드 강도·실력 차 반영 설정', () =
   assert.strictEqual(GG.getRank(2000).tier.name, '챌린저');
   assert.strictEqual(GG.calcMatch(620, 620, 0).gain, 25); // 기본값은 그대로
 });
+
+test('챌린저 200 설정: 티어가 한 판에 한 칸 안쪽으로 움직이고 보너스도 비례', () => {
+  const c = { baseLP: 10, eloScale: 300, tierScale: 0.1, pyramid: 0.5, startPoints: 200 };
+  const r = GG.replay(['a'], [], c);
+  assert.strictEqual(GG.getRank(r.players.a.points).label, '브론즈 IV');
+  assert.ok(GG.calcMatch(62, 62, 0, c).gain <= GG.TIERS[4].min - GG.TIERS[3].min);
+  assert.strictEqual(GG.calcMatch(62, 62, 2, c).bonus, 1);
+  assert.strictEqual(GG.calcMatch(62, 62, 9, c).bonus, 3);
+  GG.setTierScale(1);
+  assert.strictEqual(GG.calcMatch(450, 450, 9).bonus, 8);
+});
