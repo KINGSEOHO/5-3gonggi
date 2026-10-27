@@ -31,6 +31,22 @@
   var LOSS_MUL = [0.5, 0.7, 0.85, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6];
   function streakBonusFor(newStreak) { return newStreak >= 5 ? 8 : newStreak === 4 ? 5 : newStreak === 3 ? 3 : 0; }
 
+  /* 티어 구간 배율: 1이면 챌린저 2000, 0.5면 챌린저 1000 (선생님 설정 tierScale) */
+  var BASE_MIN = TIERS.map(function (t) { return t.min; });
+  var tierScaleNow = 1;
+  function setTierScale(sc) {
+    sc = Number(sc) || 1;
+    if (sc === tierScaleNow) return;
+    tierScaleNow = sc;
+    TIERS.forEach(function (t, i) { t.min = Math.round(BASE_MIN[i] * sc); });
+    DIV_SIZE = Math.round(50 * sc);
+    api.DIV_SIZE = DIV_SIZE;
+  }
+  /* 피라미드 강도: 1이면 지금처럼 높은 티어가 많이 잃음, 0이면 모든 티어가 같음 */
+  function mulAt(arr, i, strength) {
+    var k = strength == null ? 1 : Number(strength);
+    return 1 + (arr[i] - 1) * k;
+  }
   function tierIndexOf(points) {
     for (var i = TIERS.length - 1; i >= 0; i--) {
       if (points >= TIERS[i].min) return i;
@@ -63,22 +79,25 @@
   }
 
   /* 기대 승률 (엘로 공식). 점수 차 200점(한 티어)이면 약 76% */
-  function expectedScore(myPoints, oppPoints) {
-    return 1 / (1 + Math.pow(10, (oppPoints - myPoints) / 400));
+  /* scale: LP 몇 점 차이면 기대 승률이 10배 차이 나는지. 클수록 실력 차가 LP 차로 크게 벌어진다 */
+  function expectedScore(myPoints, oppPoints, scale) {
+    return 1 / (1 + Math.pow(10, (oppPoints - myPoints) / (scale || 400)));
   }
 
   /* 대결 결과 계산. winnerStreak = 이기기 전 연승 수, loserStreak = 지기 전 연패 수(양수) */
   function calcMatch(winnerPoints, loserPoints, winnerStreak, settings, loserStreak) {
     var s = Object.assign({}, DEFAULT_SETTINGS, settings || {});
+    setTierScale(s.tierScale);
     var base = s.baseLP || s.winBase || 25;
-    var eWin = expectedScore(winnerPoints, loserPoints);
+    var wm = mulAt(WIN_MUL, tierIndexOf(winnerPoints), s.pyramid), lm = mulAt(LOSS_MUL, tierIndexOf(loserPoints), s.pyramid);
+    var eWin = expectedScore(winnerPoints, loserPoints, s.eloScale);
     var wt = tierIndexOf(winnerPoints), lt = tierIndexOf(loserPoints);
 
     // 티어 차이: 낮은 쪽이 이기면 크게, 높은 쪽이 이기면 조금 (엘로)
-    var maxGain = Math.round(base * WIN_MUL[wt] * 2);
-    var gain = Math.max(3, Math.min(maxGain, Math.round(base * WIN_MUL[wt] * 2 * (1 - eWin))));
-    var maxLoss = Math.round(base * LOSS_MUL[lt] * 2);
-    var loss = Math.max(2, Math.min(maxLoss, Math.round(base * LOSS_MUL[lt] * 2 * (1 - eWin))));
+    var maxGain = Math.round(base * wm * 2);
+    var gain = Math.max(3, Math.min(maxGain, Math.round(base * wm * 2 * (1 - eWin))));
+    var maxLoss = Math.round(base * lm * 2);
+    var loss = Math.max(2, Math.min(maxLoss, Math.round(base * lm * 2 * (1 - eWin))));
     var shield = !!(s.lossShield && (loserStreak || 0) >= 2); // 이번에 지면 3연패
     if (shield) loss = Math.ceil(loss / 2);
     loss = Math.min(loss, loserPoints); // 0 아래로는 안 내려감
@@ -202,9 +221,12 @@
   function replay(ids, matches, settings, adjusts, fixed) {
     fixed = fixed || {};
     var s = Object.assign({}, DEFAULT_SETTINGS, settings || {});
+    setTierScale(s.tierScale);
     var P = {};
     function get(id) {
-      if (!P[id]) P[id] = { id: id, points: id in fixed ? fixed[id] : s.startPoints, wins: 0, losses: 0, streak: 0, bestStreak: 0, peak: s.startPoints, adjusted: 0 };
+      // 시작 LP는 '챌린저 2000 기준' 값이라 티어 구간 배율을 곱한다
+      var st0 = Math.round((s.startPoints || 0) * (Number(s.tierScale) || 1));
+      if (!P[id]) P[id] = { id: id, points: id in fixed ? fixed[id] : st0, wins: 0, losses: 0, streak: 0, bestStreak: 0, peak: st0, adjusted: 0 };
       return P[id];
     }
     (ids || []).forEach(get);
@@ -238,11 +260,12 @@
     return { players: P, matches: results, adjusts: adj };
   }
 
-  var api = {
+  var api;
+  api = {
     TIERS: TIERS, DIV_SIZE: DIV_SIZE, ROMAN: ROMAN, DEFAULT_SETTINGS: DEFAULT_SETTINGS,
     getRank: getRank, expectedScore: expectedScore, calcMatch: calcMatch, preview: preview,
     recommend: recommend, autoPair: autoPair, applyResult: applyResult, replay: replay, WIN_MUL: WIN_MUL, LOSS_MUL: LOSS_MUL,
-    lastMetAgo: lastMetAgo, timesMet: timesMet
+    lastMetAgo: lastMetAgo, timesMet: timesMet, setTierScale: setTierScale, tierIndexOf: tierIndexOf
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.GG = api;

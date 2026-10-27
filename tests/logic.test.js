@@ -104,3 +104,16 @@ test('선생님 계정: LP 고정, 이기면 학생이 크게 얻음', () => {
   assert.ok(r.matches[0].upset);
   assert.strictEqual(r.adjusts.length, 0);
 });
+
+test('티어 구간 배율·피라미드 강도·실력 차 반영 설정', () => {
+  const cfg = { tierScale: 0.35, pyramid: 0.5, eloScale: 800, baseLP: 30, startPoints: 200 };
+  const r = GG.replay(['a', 'b'], [], cfg);
+  assert.strictEqual(r.players.a.points, 70);            // 브론즈 IV 시작
+  assert.strictEqual(GG.getRank(70).tier.name, '브론즈');
+  assert.strictEqual(GG.getRank(700).tier.name, '챌린저');
+  const hi = GG.calcMatch(500, 500, 0, cfg);
+  assert.ok(hi.gain >= 20 && hi.loss <= 40, JSON.stringify(hi));
+  GG.setTierScale(1);                                     // 다른 테스트를 위해 되돌림
+  assert.strictEqual(GG.getRank(2000).tier.name, '챌린저');
+  assert.strictEqual(GG.calcMatch(620, 620, 0).gain, 25); // 기본값은 그대로
+});

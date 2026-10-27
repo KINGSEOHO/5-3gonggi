@@ -44,6 +44,9 @@
   /* 선생님 계정: 랭킹에는 안 나오고, LP가 고정(기본 마스터 1400)이라 이기면 큰 보상 */
   var TEACHER_ID = '선생님';
   function teacherLP() { return (data && data.settings && data.settings.teacherLP) || 1400; }
+  /* 설정의 LP 값(시작·선생님)은 '챌린저 2000 기준'이라 티어 구간 배율을 곱해 쓴다 */
+  function tscale() { return Number(data && data.settings && data.settings.tierScale) || 1; }
+  function scaled(v) { return Math.round(v * tscale()); }
   var NAV = [
     { id: 'home', label: '로비', icon: 'M12 2 3 7v10l9 5 9-5V7zm0 2.3 6.8 3.8L12 12 5.2 8.1zM5 9.8l6 3.4v6.6l-6-3.3zm8 10V13.2l6-3.4v6.7z' },
     { id: 'battle', label: '대결', icon: 'M4 3h3l7 7-1.5 1.5L4 4zm16 0v3l-9 9-1.5-1.5L18.5 4zM3 17l4-4 4 4-1.5 1.5L8 17l-3 3-2-2 3-3-1.5-1.5zm18 0-4-4-4 4 1.5 1.5L16 17l3 3 2-2-3-3z' },
@@ -71,7 +74,8 @@
   /* ───────── 저장소 ───────── */
   function baseStats() {
     var s = (data && data.settings) || GG.DEFAULT_SETTINGS;
-    return { points: s.startPoints, wins: 0, losses: 0, streak: 0, bestStreak: 0, peak: s.startPoints };
+    var st0 = Math.round((s.startPoints || 0) * (Number(s.tierScale) || 1));
+    return { points: st0, wins: 0, losses: 0, streak: 0, bestStreak: 0, peak: st0 };
   }
 
   /* 체험 모드 예시: 실력이 다른 16명이 2주 동안 대결한 기록 */
@@ -117,7 +121,7 @@
   function teacherPlayer() {
     if (tcache && cache) return tcache;
     var saved = (data && data.players[TEACHER_ID]) || {};
-    var stat = (calc && calc.players[TEACHER_ID]) || Object.assign(baseStats(), { points: teacherLP() });
+    var stat = (calc && calc.players[TEACHER_ID]) || Object.assign(baseStats(), { points: scaled(teacherLP()) });
     var look = Object.assign(AV.teacherDefaults(), {});
     Object.keys(look).forEach(function (k) { if (saved[k]) look[k] = saved[k]; });
     tcache = Object.assign({ away: false }, saved, stat, { id: TEACHER_ID, name: TEACHER_ID, no: 0, teacher: true, look: look });
@@ -659,9 +663,18 @@
       '<p class="muted" style="margin:0;font-size:13px">티어마다 이 값에 배율이 곱해져요. 낮은 티어는 많이 얻고 적게 잃고, 높은 티어는 적게 얻고 많이 잃어요. 바꾸면 지난 경기까지 모두 다시 계산돼요.</p>' +
       '<label class="check"><input type="checkbox" id="set-shield"' + (s.lossShield ? ' checked' : '') + '> 연패 보호 (3연패부터 잃는 LP 절반)</label>' +
       '<div class="form-row"><label for="set-start">시즌 시작 LP</label><select class="input" id="set-start">' +
-      [0, 200, 400, 600].map(function (v) { return '<option value="' + v + '"' + (s.startPoints === v ? ' selected' : '') + '>' + v + ' LP (' + GG.getRank(v).label + ')</option>'; }).join('') + '</select></div>' +
+      [0, 200, 400, 600].map(function (v) { return '<option value="' + v + '"' + (s.startPoints === v ? ' selected' : '') + '>' + GG.getRank(scaled(v)).label + ' (' + scaled(v) + ' LP)</option>'; }).join('') + '</select></div>' +
+      '<div class="form-row"><label for="set-chall">티어 구간 (챌린저가 되는 LP)</label><select class="input" id="set-chall">' +
+      [[2000, '2000 LP · 기본 (아주 길어요)'], [1400, '1400 LP'], [1000, '1000 LP'], [800, '800 LP'], [700, '700 LP · 2주 시즌 추천'], [600, '600 LP']].map(function (o) {
+        return '<option value="' + o[0] + '"' + (Math.round(tscale() * 2000) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
+      '<div class="form-row"><label for="set-pyr">피라미드 강도 (높은 티어에서 얼마나 오르기 어렵게)</label><select class="input" id="set-pyr">' +
+      [[1, '강함 · 기본'], [0.5, '보통 · 추천'], [0.3, '약함']].map(function (o) { return '<option value="' + o[0] + '"' + ((s.pyramid == null ? 1 : s.pyramid) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
+      '<div class="form-row"><label for="set-elo">실력 차 반영 (잘하는 친구가 약한 친구를 이겼을 때도 오르는 정도)</label><select class="input" id="set-elo">' +
+      [[400, '좁게 · 기본'], [800, '보통 · 추천'], [1200, '넓게']].map(function (o) { return '<option value="' + o[0] + '"' + ((s.eloScale || 400) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
+      '<div class="row-actions" style="justify-content:flex-start"><button class="btn btn-sm" type="button" data-act="preset-2w">2주 시즌 추천값 채우기</button></div>' +
+      '<p class="muted" style="margin:0;font-size:13px"><b>주의:</b> 규칙을 저장하면 이번 시즌 경기까지 새 규칙으로 다시 계산돼요. 새 시즌을 시작(시즌 초기화)한 뒤에 바꾸는 걸 추천해요.</p>' +
       '<div class="form-row"><label for="set-tlp">선생님 계정 LP (보스 난이도, 높을수록 이겼을 때 보상이 커요)</label><select class="input" id="set-tlp">' +
-      [800, 1000, 1200, 1400, 1700, 2000].map(function (v) { return '<option value="' + v + '"' + (teacherLP() === v ? ' selected' : '') + '>' + v + ' LP (' + GG.getRank(v).label + ')</option>'; }).join('') + '</select></div>' +
+      [800, 1000, 1200, 1400, 1700, 2000].map(function (v) { return '<option value="' + v + '"' + (teacherLP() === v ? ' selected' : '') + '>' + GG.getRank(scaled(v)).label + ' (' + scaled(v) + ' LP)</option>'; }).join('') + '</select></div>' +
       '<div class="form-row"><label for="set-end">이번 시즌 종료일 (로비에 안내돼요)</label><input class="input" id="set-end" type="date" value="' + esc(seasonEnd()) + '"></div>' +
       '<label class="check"><input type="checkbox" id="set-streak"' + (s.streakBonus ? ' checked' : '') + '> 연승 보너스</label>' +
       '<div class="row-actions"><button class="btn btn-gold" type="button" data-act="save-settings">규칙 저장</button></div>' +
@@ -1059,6 +1072,11 @@
         });
         break;
       case 'login': openPicker('login'); break;
+      case 'preset-2w':
+        document.getElementById('set-base').value = 30; document.getElementById('set-chall').value = '700';
+        document.getElementById('set-pyr').value = '0.5'; document.getElementById('set-elo').value = '800'; document.getElementById('set-start').value = '200';
+        toast('추천값을 채웠어요. 새 시즌을 시작한 뒤 "규칙 저장"을 눌러 주세요');
+        break;
       case 'hist-fold': ui.histOpen = !ui.histOpen; render(); break;
       case 'adj-fold': ui.adjOpen = !ui.adjOpen; render(); break;
       case 'adj-all': readAdjustForm(); ui.adjPick = {}; players().forEach(function (p) { ui.adjPick[p.id] = true; }); render(); document.getElementById('adjust').scrollIntoView({ block: 'start' }); break;
@@ -1218,6 +1236,9 @@
         store.saveSettings(Object.assign({}, settings(), {
           baseLP: Math.max(10, Math.min(60, parseInt(document.getElementById('set-base').value, 10) || 25)),
           lossShield: document.getElementById('set-shield').checked,
+          tierScale: (parseInt(document.getElementById('set-chall').value, 10) || 2000) / 2000,
+          pyramid: parseFloat(document.getElementById('set-pyr').value),
+          eloScale: parseInt(document.getElementById('set-elo').value, 10) || 400,
           startPoints: parseInt(document.getElementById('set-start').value, 10) || 0,
           streakBonus: document.getElementById('set-streak').checked,
           seasonEnd: document.getElementById('set-end').value,
@@ -1303,7 +1324,7 @@
       LEAGUE = d.league || LEAGUE; SEASON = d.season || SEASON;
       if (me && me !== TEACHER_ID && !ROSTER.some(function (st) { return st.name === me; })) { me = null; }
     }
-    var fixed = {}; fixed[TEACHER_ID] = (d.settings && d.settings.teacherLP) || 1400;
+    var fixed = {}; fixed[TEACHER_ID] = Math.round(((d.settings && d.settings.teacherLP) || 1400) * (Number(d.settings && d.settings.tierScale) || 1));
     calc = GG.replay(ROSTER.map(function (st) { return st.name; }).concat([TEACHER_ID]), d.matches, d.settings, d.adjusts, fixed);
     render();
     fresh = fresh.filter(function (m) { return !wantResult[m.id]; }).map(function (m) { return matchById(m.id); }).filter(Boolean);
