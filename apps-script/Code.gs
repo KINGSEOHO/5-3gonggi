@@ -145,6 +145,8 @@ function handle_(req) {
     setConfig_('반이름', String(req.league || '우리 반 리그'));
     setConfig_('시즌', 1);
     setConfig_('선생님비밀번호', String(req.teacherPw));
+    // 2주 시즌 추천 규칙으로 시작
+    setConfig_('규칙', JSON.stringify({ tierScale: 0.1, baseLP: 10, pyramid: 0.5, eloScale: 300, startPoints: 200 }));
     [TAB.matches, TAB.players, TAB.pins, TAB.reports, TAB.adjust].forEach(sheet_);
     bump_();
     return {};

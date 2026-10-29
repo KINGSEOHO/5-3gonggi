@@ -38,6 +38,13 @@
   var DEMO_PIN = '0000';
   var LEAGUE = SHEET ? '우리 반 리그' : cfg.LEAGUE_NAME || '해바라기 리그';
   var SEASON = cfg.SEASON || 1;
+  /* 2주 시즌 추천값 (시즌 1 분석 결과: 챌린저 200, 기준 LP 10, 피라미드 보통, 실력 차 300, 브론즈 IV 시작) */
+  var PRESET_2W = { tierScale: 0.1, baseLP: 10, pyramid: 0.5, eloScale: 300, startPoints: 200 };
+  function addDays(ymd, n) {
+    var d = ymd ? new Date(ymd + 'T12:00:00') : new Date();
+    d.setDate(d.getDate() + n);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
   var CLASS_LINK = location.origin + location.pathname + (SHEET ? '?sheet=' + sheetIdOf(SHEET_URL) : '');
 
   var AV = window.GGAvatar;
@@ -273,7 +280,7 @@
     if (end) {
       var e = new Date(end + 'T23:59:59'), days = Math.ceil((new Date(end + 'T00:00:00') - new Date(new Date().toDateString())) / 86400000);
       var wk = '일월화수목금토'.charAt(e.getDay());
-      txt += ' 이번 <b>시즌 ' + SEASON + '</b>은 <b>' + (e.getMonth() + 1) + '월 ' + e.getDate() + '일(' + wk + ')</b>에 끝나요' +
+      txt += ' <b>시즌 ' + SEASON + '</b> 종료일은 <b>' + (e.getMonth() + 1) + '월 ' + e.getDate() + '일(' + wk + ')</b>이에요' +
         (days > 0 ? ' <span class="pill pill-gold">D-' + days + '</span>' : days === 0 ? ' <span class="pill pill-gold">오늘 마감</span>' : ' <span class="pill">종료됨</span>');
     }
     return '<div class="season-note">' + navIcon('M7 2h2v2h6V2h2v2h3a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3zm-2 8v9h14v-9zm0-2h14V6H5z', 18) + '<span>' + txt + '</span></div>';
@@ -1078,7 +1085,7 @@
         // 챌린저 200 LP: 기준 LP를 같이 줄여야 한 판에 티어가 여러 칸씩 뛰지 않는다
         document.getElementById('set-base').value = 10; document.getElementById('set-chall').value = '200';
         document.getElementById('set-pyr').value = '0.5'; document.getElementById('set-elo').value = '300'; document.getElementById('set-start').value = '200';
-        toast('추천값을 채웠어요. 새 시즌을 시작한 뒤 "규칙 저장"을 눌러 주세요');
+        toast('추천값을 채웠어요. "규칙 저장"을 눌러야 적용돼요 (시즌 초기화 때는 자동으로 적용돼요)');
         break;
       case 'hist-fold': ui.histOpen = !ui.histOpen; render(); break;
       case 'adj-fold': ui.adjOpen = !ui.adjOpen; render(); break;
@@ -1258,8 +1265,14 @@
         } else selectIt();
         break;
       case 'reset-season':
-        ask('새 시즌을 시작할까요?', '모든 선수의 LP와 전적, 대결 기록이 지워져요. 되돌릴 수 없어요. 필요하면 먼저 백업해 두세요.', '시즌 초기화', function () {
-          store.resetSeason().then(function () { ui.pairs = null; toast('새 시즌이 시작됐어요'); }, fail);
+        var nextEnd = addDays(seasonEnd() && seasonEnd() >= addDays('', -3) ? seasonEnd() : '', 14);
+        ask('새 시즌을 시작할까요? (시즌 ' + (SEASON + 1) + ')', '모든 선수의 LP와 전적, 대결 기록, 선생님이 준 LP가 지워져요. 되돌릴 수 없어요. 필요하면 먼저 백업해 두세요.<br><br>' +
+          '새 시즌에는 <b>2주 시즌 추천 규칙</b>(챌린저 200 LP, 기준 LP 10, 브론즈 IV 시작)이 자동으로 적용되고, 종료일은 <b>' + nextEnd + '</b>로 정해져요. 나중에 선생님 메뉴에서 바꿀 수 있어요.', '시즌 초기화', function () {
+          var next = Object.assign({}, settings(), PRESET_2W, { seasonEnd: nextEnd });
+          if (!SHEET) next.season = SEASON + 1;
+          store.resetSeason().then(function () { return store.saveSettings(next); }).then(function () {
+            ui.pairs = null; toast('새 시즌 시작! (시즌 ' + (SHEET ? SEASON + 1 : next.season) + ') 추천 규칙을 적용했어요');
+          }, fail);
         });
         break;
       case 'reset-demo':
@@ -1325,6 +1338,8 @@
     if (SHEET) {
       ROSTER = d.roster || [];
       LEAGUE = d.league || LEAGUE; SEASON = d.season || SEASON;
+    } else if (d.settings && d.settings.season) {
+      SEASON = d.settings.season;
       if (me && me !== TEACHER_ID && !ROSTER.some(function (st) { return st.name === me; })) { me = null; }
     }
     var fixed = {}; fixed[TEACHER_ID] = Math.round(((d.settings && d.settings.teacherLP) || 1400) * (Number(d.settings && d.settings.tierScale) || 1));
