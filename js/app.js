@@ -702,10 +702,36 @@
       '<section class="panel section"><h2>백업</h2><p class="muted" style="margin:0;font-size:14px">지금 점수와 기록을 글자로 복사해 보관해요.</p>' +
       '<div class="row-actions" style="justify-content:flex-start"><button class="btn" type="button" data-act="copy-backup">백업 코드 복사</button></div>' +
       '<textarea class="input" id="backup-text" style="min-height:60px" readonly aria-label="백업 코드"></textarea></section>' +
-      '<section class="panel section"><h2>새 시즌</h2><p class="muted" style="margin:0;font-size:14px">캐릭터는 그대로 두고 모든 LP와 대결 기록을 지워요.</p>' +
+      '<section class="panel section"><h2>새 시즌</h2><p class="muted" style="margin:0;font-size:14px">캐릭터는 그대로 두고 모든 LP와 대결 기록을 지워요. 지난 시즌 티어와 브론즈 IV 사이에서 새 시즌을 시작해요 (3판 미만은 브론즈 IV).</p>' +
+      '<div class="form-row"><label for="carry-rate">지난 시즌 성적 반영</label><select class="input" id="carry-rate">' +
+        [[0, '반영 안 함 · 모두 브론즈 IV에서 출발'], [0.3, '조금 (30%)'], [0.5, '절반 · 추천'], [0.7, '많이 (70%)']].map(function (o) {
+          return '<option value="' + o[0] + '"' + (carryRate() === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
+
       '<div class="row-actions" style="justify-content:flex-start"><button class="btn btn-danger" type="button" data-act="reset-season">시즌 초기화</button>' +
-      (!LIVE ? '<button class="btn btn-ghost" type="button" data-act="reset-demo">예시 다시 채우기</button>' : '') + '</div></section></div></div>';
+      (!LIVE ? '<button class="btn btn-ghost" type="button" data-act="reset-demo">예시 다시 채우기</button>' : '') + '</div></section>' +
+      '<section class="panel gilded section" id="carry-panel"><h2>지난 시즌 성적 이월 (백업으로)</h2>' +
+      '<p class="muted" style="margin:0;font-size:14px">이미 시즌을 초기화했다면, 지난 시즌 <b>백업 코드</b>를 붙여넣어 이번 시즌 시작점을 정할 수 있어요. 적용하면 이번 시즌 경기도 새 시작점에서 다시 계산돼요.</p>' +
+      (settings().carry ? '<p style="margin:0;font-size:14px"><span class="pill pill-gold">이월 적용 중</span> ' + Object.keys(settings().carry).length + '명 · 반영 ' + Math.round(carryRate() * 100) + '% <button class="btn btn-sm btn-ghost" type="button" data-act="carry-clear">이월 지우기</button></p>' : '') +
+      '<textarea class="input" id="carry-text" style="min-height:70px" placeholder="지난 시즌 백업 코드를 붙여넣어 주세요" aria-label="지난 시즌 백업 코드"></textarea>' +
+      '<div class="row-actions" style="justify-content:flex-start"><button class="btn" type="button" data-act="carry-preview">미리 보기</button></div><div id="carry-out"></div></section></div></div>';
   };
+
+  /* 시즌 이월 */
+  function carryRate() { var r = settings().carryRate; return r == null ? 0.5 : Number(r); }
+  function studentStats(P) { var o = {}; ROSTER.forEach(function (st) { if (P[st.name]) o[st.name] = P[st.name]; }); return o; }
+  function carryTable(prevP, prevS, starts) {
+    var keep = tscale();
+    var rows = ROSTER.map(function (st) {
+      var p = prevP[st.name] || { points: 0, wins: 0, losses: 0 };
+      GG.setTierScale((prevS && prevS.tierScale) || 1); var before = GG.getRank(p.points).label;
+      GG.setTierScale(1); var after = GG.getRank(starts[st.name]).label;
+      return { name: st.name, g: (p.wins || 0) + (p.losses || 0), before: before, after: after, lp: starts[st.name] };
+    }).sort(function (a, b) { return b.lp - a.lp; });
+    GG.setTierScale(keep);
+    return '<div class="table-wrap"><table><thead><tr><th>이름</th><th>지난 시즌</th><th>경기</th><th>이번 시즌 시작</th></tr></thead><tbody>' + rows.map(function (r) {
+      return '<tr><td><b>' + esc(r.name) + '</b></td><td>' + r.before + '</td><td class="num">' + r.g + '</td><td class="up">' + r.after + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+  }
 
   /* 선생님이 LP를 직접 더하거나 빼기 */
   function adjustPanel() {
@@ -786,7 +812,7 @@
       lpBar(r) + '<div class="muted" style="font-size:13px">' + nextStepText(r) + '</div></div></div>' +
       '<div class="stats"><div class="stat"><b>' + p.wins + '</b><span>승리</span></div><div class="stat"><b>' + p.losses + '</b><span>패배</span></div>' +
       '<div class="stat"><b>' + winRate(p) + '%</b><span>승률</span></div><div class="stat"><b>' + (p.bestStreak || 0) + '</b><span>최고 연승</span></div></div>' +
-      '<div class="muted" style="font-size:13px">시즌 최고: ' + peak.label + ' (' + (p.peak || p.points) + ' LP)' + (p.adjusted ? ' · 선생님이 준 LP ' + (p.adjusted > 0 ? '+' : '−') + Math.abs(p.adjusted) : '') + '</div>' +
+      '<div class="muted" style="font-size:13px">' + (settings().carry && settings().carry[p.id] != null ? '이번 시즌 시작: ' + GG.getRank(scaled(settings().carry[p.id])).label + ' (지난 시즌 성적 반영) · ' : '') + '시즌 최고: ' + peak.label + ' (' + (p.peak || p.points) + ' LP)' + (p.adjusted ? ' · 선생님이 준 LP ' + (p.adjusted > 0 ? '+' : '−') + Math.abs(p.adjusted) : '') + '</div>' +
       '<div class="row-actions" style="justify-content:flex-start"><button class="btn btn-play" type="button" data-act="battle-with" data-id="' + esc(id) + '">PLAY <span class="ko">이 선수로 대결</span></button>' +
       '<button class="btn" type="button" data-act="customize" data-id="' + esc(id) + '">캐릭터 꾸미기</button></div>' +
       (ui.teacher ? '<div class="row-actions" style="justify-content:flex-start;align-items:center"><span class="label">선생님 LP</span>' + [10, 5, -5, -10].map(qlp).map(function (n) {
@@ -1081,6 +1107,32 @@
         });
         break;
       case 'login': openPicker('login'); break;
+      case 'carry-preview':
+        var raw = document.getElementById('carry-text').value.trim(), outEl = document.getElementById('carry-out');
+        var bk = null;
+        try { bk = JSON.parse(raw); } catch (e2) { bk = null; }
+        if (!bk || !Array.isArray(bk.matches)) { outEl.innerHTML = '<p class="form-error">백업 코드가 아니에요. 선생님 메뉴 → 백업 코드 복사로 만든 글자를 처음부터 끝까지 붙여넣어 주세요.</p>'; break; }
+        var keepScale = tscale();
+        var prevCalc = GG.replay(ROSTER.map(function (st) { return st.name; }), bk.matches, bk.settings || {}, bk.adjusts || [], {});
+        var rate2 = parseFloat((document.getElementById('carry-rate') || {}).value); if (isNaN(rate2)) rate2 = 0.5;
+        ui.carryDraft = { starts: GG.carryStarts(studentStats(prevCalc.players), bk.settings || {}, rate2, settings().startPoints || 200), rate: rate2 };
+        outEl.innerHTML = '<p class="muted" style="margin:0;font-size:13px">지난 시즌 경기 ' + bk.matches.length + '판' + (bk.adjusts ? '' : ' (이 백업에는 선생님이 준 LP가 없어요)') + ' · 반영 ' + Math.round(rate2 * 100) + '%</p>' +
+          carryTable(studentStats(prevCalc.players), bk.settings || {}, ui.carryDraft.starts) +
+          '<div class="row-actions"><button class="btn btn-gold" type="button" data-act="carry-apply">이번 시즌에 적용</button></div>';
+        GG.setTierScale(keepScale);
+        break;
+      case 'carry-apply':
+        if (!ui.carryDraft) break;
+        ask('이월을 적용할까요?', '이번 시즌 시작점이 미리 보기처럼 바뀌고, 이번 시즌 경기도 새 시작점에서 다시 계산돼요.', '적용', function () {
+          store.saveSettings(Object.assign({}, settings(), { carry: ui.carryDraft.starts, carryRate: ui.carryDraft.rate })).then(function () { ui.carryDraft = null; toast('지난 시즌 성적을 반영했어요'); }, fail);
+        });
+        break;
+      case 'carry-clear':
+        ask('이월을 지울까요?', '모두 기본 시작점(브론즈 IV)에서 다시 계산돼요.', '지우기', function () {
+          var ns = Object.assign({}, settings()); delete ns.carry;
+          store.saveSettings(ns).then(function () { toast('이월을 지웠어요'); }, fail);
+        });
+        break;
       case 'preset-2w':
         // 챌린저 200 LP: 기준 LP를 같이 줄여야 한 판에 티어가 여러 칸씩 뛰지 않는다
         document.getElementById('set-base').value = 10; document.getElementById('set-chall').value = '200';
@@ -1256,7 +1308,7 @@
         })).then(function () { toast('규칙을 저장했어요'); }, fail);
         break;
       case 'copy-backup':
-        var code = JSON.stringify({ app: 'gonggi-blox', savedAt: new Date().toISOString(), players: data.players, matches: data.matches, settings: data.settings });
+        var code = JSON.stringify({ app: 'gonggi-blox', savedAt: new Date().toISOString(), season: SEASON, players: data.players, matches: data.matches, adjusts: data.adjusts || [], settings: data.settings });
         var box = document.getElementById('backup-text');
         box.value = code;
         var selectIt = function () { box.select(); toast('칸의 코드를 Ctrl+C로 복사해 주세요'); };
@@ -1267,8 +1319,13 @@
       case 'reset-season':
         var nextEnd = addDays(seasonEnd() && seasonEnd() >= addDays('', -3) ? seasonEnd() : '', 14);
         ask('새 시즌을 시작할까요? (시즌 ' + (SEASON + 1) + ')', '모든 선수의 LP와 전적, 대결 기록, 선생님이 준 LP가 지워져요. 되돌릴 수 없어요. 필요하면 먼저 백업해 두세요.<br><br>' +
-          '새 시즌에는 <b>2주 시즌 추천 규칙</b>(챌린저 200 LP, 기준 LP 10, 브론즈 IV 시작)이 자동으로 적용되고, 종료일은 <b>' + nextEnd + '</b>로 정해져요. 나중에 선생님 메뉴에서 바꿀 수 있어요.', '시즌 초기화', function () {
-          var next = Object.assign({}, settings(), PRESET_2W, { seasonEnd: nextEnd });
+          '새 시즌에는 <b>2주 시즌 추천 규칙</b>(챌린저 200 LP, 기준 LP 10)이 자동으로 적용되고, 종료일은 <b>' + nextEnd + '</b>로 정해져요. 지난 시즌 성적은 <b>' + Math.round((parseFloat((document.getElementById('carry-rate') || {}).value) || 0) * 100) + '%</b> 반영돼요.', '시즌 초기화', function () {
+          var rate = parseFloat((document.getElementById('carry-rate') || {}).value);
+          if (isNaN(rate)) rate = carryRate();
+          var next = Object.assign({}, settings(), PRESET_2W, { seasonEnd: nextEnd, carryRate: rate });
+          // 지난 시즌 성적 이월: 지금(초기화 전) 점수로 시작점 계산
+          next.carry = rate > 0 ? GG.carryStarts(studentStats(calc.players), settings(), rate, PRESET_2W.startPoints) : null;
+          if (!next.carry) delete next.carry;
           if (!SHEET) next.season = SEASON + 1;
           store.resetSeason().then(function () { return store.saveSettings(next); }).then(function () {
             ui.pairs = null; toast('새 시즌 시작! (시즌 ' + (SHEET ? SEASON + 1 : next.season) + ') 추천 규칙을 적용했어요');

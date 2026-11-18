@@ -128,3 +128,17 @@ test('챌린저 200 설정: 티어가 한 판에 한 칸 안쪽으로 움직이�
   GG.setTierScale(1);
   assert.strictEqual(GG.calcMatch(450, 450, 9).bonus, 8);
 });
+
+test('시즌 이월: 지난 티어와 브론즈 IV의 중간에서 시작, 경기 적으면 기본', () => {
+  const prev = { tierScale: 0.1 };
+  const starts = GG.carryStarts({ top: { points: 205, wins: 20, losses: 5 }, low: { points: 2, wins: 1, losses: 9 }, few: { points: 150, wins: 1, losses: 0 } }, prev, 0.5, 200);
+  GG.setTierScale(1);
+  assert.strictEqual(GG.getRank(starts.top).label, '에메랄드 IV');
+  assert.strictEqual(GG.getRank(starts.low).label, '아이언 II');
+  assert.strictEqual(starts.few, 200);
+  assert.deepStrictEqual(GG.carryStarts({ top: { points: 205, wins: 20, losses: 5 } }, prev, 0, 200), { top: 200 });
+  const r = GG.replay(['top', 'low'], [], { tierScale: 0.1, startPoints: 200, carry: starts });
+  assert.strictEqual(r.players.top.points, 100); // 에메랄드 IV (챌린저 200 기준)
+  assert.strictEqual(r.players.low.points, 10);
+  GG.setTierScale(1);
+});

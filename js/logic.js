@@ -227,7 +227,9 @@
     var P = {};
     function get(id) {
       // 시작 LP는 '챌린저 2000 기준' 값이라 티어 구간 배율을 곱한다
-      var st0 = Math.round((s.startPoints || 0) * (Number(s.tierScale) || 1));
+      // 지난 시즌 이월: carry[이름] = 시작 LP(챌린저 2000 기준)
+      var c0 = s.carry && s.carry[id] != null ? s.carry[id] : s.startPoints || 0;
+      var st0 = Math.round(c0 * (Number(s.tierScale) || 1));
       if (!P[id]) P[id] = { id: id, points: id in fixed ? fixed[id] : st0, wins: 0, losses: 0, streak: 0, bestStreak: 0, peak: st0, adjusted: 0 };
       return P[id];
     }
@@ -262,12 +264,36 @@
     return { players: P, matches: results, adjusts: adj };
   }
 
+  /* 이월 시작점: 지난 시즌 최종 티어와 기본 시작 티어 사이에서 rate 만큼 반영 (0이면 모두 같은 출발)
+     players: {이름: {points, wins, losses}} (지난 시즌 규칙으로 계산된 값), prevSettings: 지난 시즌 규칙
+     돌려주는 값: {이름: 시작 LP(챌린저 2000 기준)}. 경기가 minGames 판 미만이면 기본 시작 */
+  function carryStarts(players, prevSettings, rate, baseStart, minGames) {
+    var keep = tierScaleNow, out = {};
+    rate = rate == null ? 0.5 : Number(rate); minGames = minGames == null ? 3 : minGames;
+    setTierScale(1);
+    var baseVal = getRank(baseStart || 0).value;
+    setTierScale((prevSettings && prevSettings.tierScale) || 1);
+    var vals = {};
+    Object.keys(players).forEach(function (id) {
+      var p = players[id];
+      vals[id] = (p.wins || 0) + (p.losses || 0) >= minGames ? getRank(p.points).value : baseVal;
+    });
+    setTierScale(1);
+    Object.keys(vals).forEach(function (id) {
+      var v = Math.max(0, Math.round(baseVal + rate * (vals[id] - baseVal)));
+      var idx = Math.min(TIERS.length - 1, Math.floor(v / 4)), div = TIERS[idx].divs ? v % 4 : 0;
+      out[id] = BASE_MIN[idx] + div * 50;
+    });
+    setTierScale(keep);
+    return out;
+  }
+
   var api;
   api = {
     TIERS: TIERS, DIV_SIZE: DIV_SIZE, ROMAN: ROMAN, DEFAULT_SETTINGS: DEFAULT_SETTINGS,
     getRank: getRank, expectedScore: expectedScore, calcMatch: calcMatch, preview: preview,
     recommend: recommend, autoPair: autoPair, applyResult: applyResult, replay: replay, WIN_MUL: WIN_MUL, LOSS_MUL: LOSS_MUL,
-    lastMetAgo: lastMetAgo, timesMet: timesMet, setTierScale: setTierScale, tierIndexOf: tierIndexOf
+    lastMetAgo: lastMetAgo, timesMet: timesMet, setTierScale: setTierScale, carryStarts: carryStarts, tierIndexOf: tierIndexOf
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.GG = api;
