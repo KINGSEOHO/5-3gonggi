@@ -23,7 +23,8 @@
     startPoints: 0,    // 시즌 시작 점수
     baseLP: 25,        // 골드에서 비슷한 친구를 이겼을 때 얻는 LP (모든 티어의 기준)
     streakBonus: true, // 3연승부터 보너스
-    lossShield: true   // 3연패부터 잃는 LP 절반
+    lossShield: true,  // 3연패부터 잃는 LP 절반
+    repeatPenalty: true // 같은 상대를 연달아 이기면 LP 감소 (100 → 70 → 50 → 30 → 10%)
   };
   /* 피라미드: 낮은 티어는 많이 얻고 적게 잃고, 높은 티어는 적게 얻고 많이 잃는다.
      비슷한 실력끼리 반반 이기면 골드 근처에서 멈추고, 그 위는 확실히 잘해야 올라간다. */
@@ -85,7 +86,11 @@
   }
 
   /* 대결 결과 계산. winnerStreak = 이기기 전 연승 수, loserStreak = 지기 전 연패 수(양수) */
-  function calcMatch(winnerPoints, loserPoints, winnerStreak, settings, loserStreak) {
+  /* 같은 상대 반복: 같은 친구를 연달아 이길수록 LP가 줄어든다 (그 친구에게 한 번 지면 다시 100%)
+     repeat = 이번 판 전까지 이 상대를 연속으로 이긴 횟수 */
+  var REPEAT_MUL = [1, 0.7, 0.5, 0.3, 0.1];
+  function repeatMul(n) { return REPEAT_MUL[Math.min(n || 0, REPEAT_MUL.length - 1)]; }
+  function calcMatch(winnerPoints, loserPoints, winnerStreak, settings, loserStreak, repeat) {
     var s = Object.assign({}, DEFAULT_SETTINGS, settings || {});
     setTierScale(s.tierScale);
     var base = s.baseLP || s.winBase || 25;
@@ -106,16 +111,33 @@
     var rawBonus = s.streakBonus ? streakBonusFor((winnerStreak || 0) + 1) : 0;
     var bonus = rawBonus ? Math.max(1, Math.round(rawBonus * base / 25)) : 0;
     var upset = getRank(loserPoints).value - getRank(winnerPoints).value >= 4; // 한 티어 이상 위를 이김
-    return { gain: gain, bonus: bonus, total: gain + bonus, loss: loss, shield: shield, upset: upset, winChance: eWin };
+    // 같은 상대 반복 감소: 이긴 쪽이 얻는 LP(보너스 포함)와 진 쪽이 잃는 LP를 같은 비율로 줄인다
+    var rm = s.repeatPenalty === false ? 1 : repeatMul(repeat);
+    if (rm < 1) {
+      gain = Math.max(1, Math.round(gain * rm));
+      bonus = Math.round(bonus * rm);
+      loss = Math.min(loserPoints, Math.max(loss ? 1 : 0, Math.round(loss * rm)));
+    }
+    return { gain: gain, bonus: bonus, total: gain + bonus, loss: loss, shield: shield, upset: upset, winChance: eWin, repeat: rm < 1 ? repeat : 0, repeatMul: rm };
   }
 
   /* 두 사람이 붙었을 때 각자 이기면/지면 얼마인지 */
-  function preview(a, b, settings) {
-    var aWins = calcMatch(a.points, b.points, a.streak > 0 ? a.streak : 0, settings, b.streak < 0 ? -b.streak : 0);
-    var bWins = calcMatch(b.points, a.points, b.streak > 0 ? b.streak : 0, settings, a.streak < 0 ? -a.streak : 0);
+  /* matches(다시 계산된 기록, 오래된 → 최근)에서 w 가 l 을 연속으로 이긴 횟수 */
+  function repeatCount(matches, w, l) {
+    var n = 0;
+    for (var i = (matches || []).length - 1; i >= 0; i--) {
+      var m = matches[i];
+      if (m.a === w && m.b === l) n++;
+      else if (m.a === l && m.b === w) break;
+    }
+    return n;
+  }
+  function preview(a, b, settings, matches) {
+    var aWins = calcMatch(a.points, b.points, a.streak > 0 ? a.streak : 0, settings, b.streak < 0 ? -b.streak : 0, repeatCount(matches, a.id, b.id));
+    var bWins = calcMatch(b.points, a.points, b.streak > 0 ? b.streak : 0, settings, a.streak < 0 ? -a.streak : 0, repeatCount(matches, b.id, a.id));
     return {
-      a: { win: aWins.total, lose: bWins.loss, chance: aWins.winChance },
-      b: { win: bWins.total, lose: aWins.loss, chance: bWins.winChance }
+      a: { win: aWins.total, lose: bWins.loss, chance: aWins.winChance, repeat: aWins.repeat, repeatMul: aWins.repeatMul },
+      b: { win: bWins.total, lose: aWins.loss, chance: bWins.winChance, repeat: bWins.repeat, repeatMul: bWins.repeatMul }
     };
   }
 
@@ -153,7 +175,7 @@
       // 선생님이 '추천에 자주'로 고른 친구는 더 앞에 (최근에 붙은 상대여도)
       var boosted = boost.indexOf(o.id) !== -1;
       if (boosted) score = Math.max(0, score - 200);
-      return { boosted: boosted, student: o, diff: diff, met: met, ago: ago, score: score, preview: preview(player, o, settings) };
+      return { boosted: boosted, student: o, diff: diff, met: met, ago: ago, score: score, preview: preview(player, o, settings, matches) };
     });
 
     var close = scored.slice().sort(function (x, y) { return x.score - y.score; }).slice(0, 3);
@@ -201,8 +223,8 @@
   }
 
   /* 승패 결과를 학생 객체에 반영 (새 객체 반환) */
-  function applyResult(winner, loser, settings) {
-    var r = calcMatch(winner.points, loser.points, winner.streak > 0 ? winner.streak : 0, settings, loser.streak < 0 ? -loser.streak : 0);
+  function applyResult(winner, loser, settings, repeat) {
+    var r = calcMatch(winner.points, loser.points, winner.streak > 0 ? winner.streak : 0, settings, loser.streak < 0 ? -loser.streak : 0, repeat);
     var w = Object.assign({}, winner);
     var l = Object.assign({}, loser);
     w.points += r.total;
@@ -237,7 +259,7 @@
     var events = (matches || []).map(function (m) { return { k: 'm', v: m }; })
       .concat((adjusts || []).map(function (a) { return { k: 'j', v: a }; }))
       .sort(function (x, y) { return x.v.t - y.v.t || (x.v.id < y.v.id ? -1 : 1); });
-    var results = [], adj = [];
+    var results = [], adj = [], rep = {}; // rep[승자\0패자] = 연속으로 이긴 횟수
     events.forEach(function (e) {
       var m = e.v;
       if (e.k === 'j') {
@@ -250,10 +272,12 @@
         return;
       }
       var w = get(m.a), l = get(m.b);
-      var out = applyResult(w, l, s);
+      var rk = m.a + '\u0000' + m.b, n = rep[rk] || 0;
+      var out = applyResult(w, l, s, n);
+      rep[rk] = n + 1; rep[m.b + '\u0000' + m.a] = 0;
       results.push({
         id: m.id, a: m.a, b: m.b, t: m.t, by: m.by, edited: m.edited,
-        gain: out.result.total, bonus: out.result.bonus, loss: out.result.loss, shield: out.result.shield, upset: out.result.upset,
+        gain: out.result.total, bonus: out.result.bonus, loss: out.result.loss, shield: out.result.shield, upset: out.result.upset, repeat: out.result.repeat, repeatMul: out.result.repeatMul,
         before: { a: { points: w.points, streak: w.streak }, b: { points: l.points, streak: l.streak } },
         after: { a: out.winner.points, b: out.loser.points }
       });
@@ -293,7 +317,7 @@
     TIERS: TIERS, DIV_SIZE: DIV_SIZE, ROMAN: ROMAN, DEFAULT_SETTINGS: DEFAULT_SETTINGS,
     getRank: getRank, expectedScore: expectedScore, calcMatch: calcMatch, preview: preview,
     recommend: recommend, autoPair: autoPair, applyResult: applyResult, replay: replay, WIN_MUL: WIN_MUL, LOSS_MUL: LOSS_MUL,
-    lastMetAgo: lastMetAgo, timesMet: timesMet, setTierScale: setTierScale, carryStarts: carryStarts, tierIndexOf: tierIndexOf
+    lastMetAgo: lastMetAgo, timesMet: timesMet, repeatCount: repeatCount, repeatMul: repeatMul, setTierScale: setTierScale, carryStarts: carryStarts, tierIndexOf: tierIndexOf
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.GG = api;

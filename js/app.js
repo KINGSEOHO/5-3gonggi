@@ -299,7 +299,7 @@
       var w = byId(rp.winner), l = byId(rp.loser);
       if (!w || !l) return;
       if (rp.loser === me) {
-        var pv = GG.calcMatch(w.points, l.points, w.streak > 0 ? w.streak : 0, settings(), l.streak < 0 ? -l.streak : 0);
+        var pv = GG.calcMatch(w.points, l.points, w.streak > 0 ? w.streak : 0, settings(), l.streak < 0 ? -l.streak : 0, GG.repeatCount(matches(), w.id, l.id));
         html += '<section class="panel gilded inbox incoming"><div class="who">' + headshot(w, 44) + '<span><span class="eyebrow">Result Check</span><b style="display:block;font-size:17px">' + esc(w.name) + '이(가) 이겼다고 기록했어요</b>' +
           '<span class="sub">맞으면 결과가 기록돼요 · 나 <span class="down">−' + pv.loss + ' LP</span> · ' + esc(w.name) + ' <span class="up">+' + pv.total + ' LP</span></span></span></div>' +
           '<div class="row-actions"><button class="btn btn-ghost" type="button" data-act="report-reject" data-id="' + esc(rp.id) + '">아니에요</button><button class="btn btn-gold" type="button" data-act="report-accept" data-id="' + esc(rp.id) + '">맞아요, 졌어요</button></div></section>';
@@ -458,7 +458,7 @@
     }
     if (personal()) { ui.a = me; if (ui.b === me) ui.b = null; }
     var a = ui.a && byId(ui.a), b = ui.b && byId(ui.b);
-    var pv = a && b ? GG.preview(a, b, settings()) : null;
+    var pv = a && b ? GG.preview(a, b, settings(), matches()) : null;
 
     function side(p, key, cls, label) {
       var head = '<span class="side-label">' + label + '</span>';
@@ -505,7 +505,9 @@
   };
 
   function matchHint(a, b, pv) {
-    if (Math.abs(a.points - b.points) < 40) return '팽팽한 실력의 대결. 승부는 한 판으로 갈립니다.';
+    var rp = [[a, b, pv.a], [b, a, pv.b]].filter(function (x) { return x[2].repeat; })[0];
+    if (rp) return '<b>' + esc(rp[0].name) + '</b>은(는) ' + esc(rp[1].name) + '에게 ' + rp[2].repeat + '번 연속 이겼어요. 이번에 또 이기면 LP가 <b class="down">' + Math.round(rp[2].repeatMul * 100) + '%</b>만 움직여요. 다른 친구와 겨뤄 보는 건 어때요?';
+    if (Math.abs(a.points - b.points) < scaled(40)) return '팽팽한 실력의 대결. 승부는 한 판으로 갈립니다.';
     var low = a.points < b.points ? a : b, high = low === a ? b : a;
     var lowWin = low === a ? pv.a.win : pv.b.win, highLose = low === a ? pv.b.lose : pv.a.lose;
     return esc(low.name) + '이(가) 이기면 <b class="up">+' + lowWin + ' LP</b> 대역전. ' + esc(high.name) + '은(는) 지면 <b class="down">−' + highLose + ' LP</b>를 잃어요.';
@@ -513,7 +515,7 @@
 
   function teacherChallenge(a) {
     if (a.teacher) return '';
-    var t = teacherPlayer(), pv = GG.preview(a, t, settings());
+    var t = teacherPlayer(), pv = GG.preview(a, t, settings(), matches());
     return '<button class="rec-item teacher-card" type="button" data-opp="' + TEACHER_ID + '" style="margin:0">' + headshot(t, 44) +
       '<span style="min-width:0"><b>선생님에게 도전!</b> <span class="teacher-tag">BOSS</span><span class="muted" style="display:block;font-size:12px">선생님은 마스터급 LP로 고정돼요. 이기면 엄청난 보상</span></span>' +
       '<span class="rec-gain"><span class="up">+' + pv.a.win + '</span><br><span class="down">−' + pv.a.lose + '</span></span></button>';
@@ -567,7 +569,7 @@
       var dt = new Date(m.t);
       var when = (dt.getMonth() + 1) + '/' + dt.getDate() + ' ' + String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0');
       var tags = (m.upset ? ' <span class="pill pill-gold">역전승</span>' : '') + (m.bonus ? ' <span class="pill pill-up">연승 +' + m.bonus + '</span>' : '') +
-        (m.shield ? ' <span class="pill">연패 보호</span>' : '') + (m.edited ? ' <span class="pill">수정됨</span>' : '');
+        (m.shield ? ' <span class="pill">연패 보호</span>' : '') + (m.repeat ? ' <span class="pill pill-down">같은 상대 ' + (m.repeat + 1) + '연승 · LP ' + Math.round(m.repeatMul * 100) + '%</span>' : '') + (m.edited ? ' <span class="pill">수정됨</span>' : '');
       return '<tr><td class="num muted">' + when + '</td>' +
         '<td><span class="who">' + headshot(w, 28) + '<b>' + esc(w.name) + '</b></span></td><td class="up">승 +' + m.gain + '</td>' +
         '<td><span class="who">' + headshot(l, 28) + '<b>' + esc(l.name) + '</b></span></td><td class="down">패 ' + (m.loss ? '−' + m.loss : '±0') + '</td><td>' + tags + '</td>' +
@@ -640,6 +642,7 @@
       '<p><b>티어 차이:</b> 나보다 높은 티어를 이기면 훨씬 많이 얻고, 낮은 티어를 이기면 조금만 얻어요. 높은 티어가 낮은 티어에게 지면 크게 잃어요.</p>' +
       (s.streakBonus ? '<p><b>연승 보너스:</b> 3연승 +' + GG.calcMatch(0, 0, 2, s).bonus + ', 4연승 +' + GG.calcMatch(0, 0, 3, s).bonus + ', 5연승부터 +' + GG.calcMatch(0, 0, 9, s).bonus + '.</p>' : '') +
       (s.lossShield ? '<p><b>연패 보호:</b> 3연패부터는 잃는 LP가 절반이에요.</p>' : '') +
+      (s.repeatPenalty !== false ? '<p><b>같은 상대 반복:</b> 같은 친구를 연달아 이길수록 움직이는 LP가 줄어요 (2연승째 70%, 3연승째 50%, 4연승째 30%, 그 뒤 10%). 그 친구에게 한 번 지면 다시 100%예요. 여러 친구와 겨뤄야 빨리 올라가요.</p>' : '') +
       '<p>결과는 <b>진 친구가 확인</b>해야 기록돼요. LP는 0 아래로 내려가지 않아요.</p></section>' +
       '<section class="panel section"><h2>티어별 LP (비슷한 상대)</h2><div class="table-wrap"><table class="example-table"><thead><tr><th>티어</th><th>이기면</th><th>지면</th></tr></thead><tbody>' + per + '</tbody></table></div>' +
       '<h2>티어 차이가 나면</h2><div class="table-wrap"><table class="example-table"><thead><tr><th>대결</th><th>승자</th><th>패자</th></tr></thead><tbody>' + ex + '</tbody></table></div></section></div>';
@@ -671,6 +674,7 @@
       '<div class="form-row"><label for="set-base">기준 LP (골드끼리 대결할 때 오르내리는 LP · 챌린저 LP가 작으면 같이 줄여요)</label><input class="input" id="set-base" type="number" min="5" max="60" value="' + (s.baseLP || 25) + '"></div>' +
       '<p class="muted" style="margin:0;font-size:13px">티어마다 이 값에 배율이 곱해져요. 낮은 티어는 많이 얻고 적게 잃고, 높은 티어는 적게 얻고 많이 잃어요. 바꾸면 지난 경기까지 모두 다시 계산돼요.</p>' +
       '<label class="check"><input type="checkbox" id="set-shield"' + (s.lossShield ? ' checked' : '') + '> 연패 보호 (3연패부터 잃는 LP 절반)</label>' +
+      '<label class="check"><input type="checkbox" id="set-repeat"' + (s.repeatPenalty !== false ? ' checked' : '') + '> 같은 상대 반복 감소 (같은 친구를 연달아 이기면 100 → 70 → 50 → 30 → 10%)</label>' +
       '<div class="form-row"><label for="set-start">시즌 시작 LP</label><select class="input" id="set-start">' +
       [0, 200, 400, 600].map(function (v) { return '<option value="' + v + '"' + (s.startPoints === v ? ' selected' : '') + '>' + GG.getRank(scaled(v)).label + ' (' + scaled(v) + ' LP)</option>'; }).join('') + '</select></div>' +
       '<div class="form-row"><label for="set-chall">티어 구간 (챌린저가 되는 LP)</label><select class="input" id="set-chall">' +
@@ -966,7 +970,7 @@
       '<div class="result-line"><span class="who">' + headshot(w, 36) + '<span><b>' + esc(w.name) + '</b><span class="sub">' + wr1.label + ' · ' + m.after.a + ' LP' + (m.bonus ? ' · 연승 보너스 +' + m.bonus : '') + '</span></span></span>' +
       '<span class="result-delta up" id="gain-count">+0</span>' + lpBar(wr1, startPct) + '</div>' +
       '<div class="result-line"><span class="who">' + headshot(l, 36) + '<span><b>' + esc(l.name) + '</b><span class="sub">' + lr1.label + ' · ' + m.after.b + ' LP</span></span></span>' +
-      '<span class="result-delta down">' + (m.loss ? '−' + m.loss : '±0') + '</span>' + (m.shield ? '<span class="sub" style="grid-column:1/-1">연패 보호로 절반만 잃었어요</span>' : '') + '</div>' + demote + '</div>' + promo +
+      '<span class="result-delta down">' + (m.loss ? '−' + m.loss : '±0') + '</span>' + (m.shield ? '<span class="sub" style="grid-column:1/-1">연패 보호로 절반만 잃었어요</span>' : '') + (m.repeat ? '<span class="sub" style="grid-column:1/-1">같은 상대에게 ' + (m.repeat + 1) + '연승이라 LP가 ' + Math.round(m.repeatMul * 100) + '%만 움직였어요. 다른 친구에게 도전해 보세요!</span>' : '') + '</div>' + demote + '</div>' + promo +
       '<div class="row-actions" style="justify-content:center"><button class="btn btn-ghost" type="button" data-act="undo-now" data-id="' + esc(m.id) + '">잘못 기록했어요</button><button class="btn btn-gold" type="button" data-act="close">계속하기</button></div></div>');
     // LP 숫자 올라가기 + 막대 채우기
     var counter = document.getElementById('gain-count'), start = performance.now();
@@ -1298,6 +1302,7 @@
         store.saveSettings(Object.assign({}, settings(), {
           baseLP: Math.max(5, Math.min(60, parseInt(document.getElementById('set-base').value, 10) || 25)),
           lossShield: document.getElementById('set-shield').checked,
+          repeatPenalty: document.getElementById('set-repeat').checked,
           tierScale: (parseInt(document.getElementById('set-chall').value, 10) || 2000) / 2000,
           pyramid: parseFloat(document.getElementById('set-pyr').value),
           eloScale: parseInt(document.getElementById('set-elo').value, 10) || 400,

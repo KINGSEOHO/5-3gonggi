@@ -142,3 +142,18 @@ test('시즌 이월: 지난 티어와 브론즈 IV의 중간에서 시작, 경�
   assert.strictEqual(r.players.low.points, 10);
   GG.setTierScale(1);
 });
+
+test('같은 상대 반복 연승: LP가 100→70→50→30→10%, 지면 다시 100%', () => {
+  const ms = [1, 2, 3, 4, 5].map((k) => ({ id: 'r' + k, a: 'x', b: 'y', t: k }))
+    .concat([{ id: 'r6', a: 'y', b: 'x', t: 6 }, { id: 'r7', a: 'x', b: 'y', t: 7 }]);
+  const r = GG.replay(['x', 'y'], ms, { streakBonus: false, startPoints: 400 });
+  assert.deepStrictEqual(r.matches.map((m) => m.repeatMul), [1, 0.7, 0.5, 0.3, 0.1, 1, 1]);
+  assert.ok(r.matches[4].gain < r.matches[0].gain / 3);
+  assert.ok(r.matches[4].loss < r.matches[0].loss);
+  assert.strictEqual(GG.repeatCount(r.matches, 'x', 'y'), 1);
+  const off = GG.replay(['x', 'y'], ms, { streakBonus: false, startPoints: 400, repeatPenalty: false });
+  assert.ok(off.matches.every((m) => m.repeatMul === 1));
+  // 다른 상대를 이기는 건 줄지 않는다
+  const mix = GG.replay(['x', 'y', 'z'], [{ id: 'a', a: 'x', b: 'y', t: 1 }, { id: 'b', a: 'x', b: 'z', t: 2 }, { id: 'c', a: 'x', b: 'y', t: 3 }], { streakBonus: false });
+  assert.deepStrictEqual(mix.matches.map((m) => m.repeatMul), [1, 1, 0.7]);
+});
