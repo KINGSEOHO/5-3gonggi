@@ -472,7 +472,7 @@
       return '<div class="side ' + cls + '">' + head +
         '<div class="side-glow" style="background:radial-gradient(circle,' + r.tier.color + '66,transparent 65%)"></div>' +
         avatarFull(p) + (p.streak >= 3 ? '<span class="streak-tag">ON FIRE · ' + p.streak + '연승</span>' : '') + '<div class="side-name">' + esc(p.name) + nameTag(p) + '</div>' +
-        '<div class="tier-tag">' + crest(r, 40) + '<span>' + r.label + '</span></div>' +
+        (p.teacher ? '<div class="tier-tag"><span class="teacher-tag">BOSS</span><span>티어 없음 · LP 고정</span></div>' : '<div class="tier-tag">' + crest(r, 40) + '<span>' + r.label + '</span></div>') +
         '<div>' + lp(p.points) + ' ' + streakPill(p) + '</div>' +
         (mine ? '<div class="stakes"><span class="stake up">승리 +' + mine.win + '</span><span class="stake down">패배 −' + mine.lose + '</span></div>' : '') +
         (fixed ? '<span class="pill pill-hex">나</span>' : '<button class="btn btn-sm btn-ghost" type="button" data-pickside="' + key + '">' + (personal() ? '상대 바꾸기' : '선수 바꾸기') + '</button>') + '</div>';
@@ -505,6 +505,10 @@
   };
 
   function matchHint(a, b, pv) {
+    if (a.teacher || b.teacher) {
+      var kid = a.teacher ? b : a, kp = a.teacher ? pv.b : pv.a;
+      return '<b>보스전!</b> ' + esc(kid.name) + '이(가) 선생님을 이기면 보스 보너스 <b class="up">+' + kp.boss + '</b> 포함 <b class="up">+' + kp.win + ' LP</b>. 져도 잃는 LP는 절반이에요.';
+    }
     var rp = [[a, b, pv.a], [b, a, pv.b]].filter(function (x) { return x[2].repeat; })[0];
     if (rp) return '<b>' + esc(rp[0].name) + '</b>은(는) ' + esc(rp[1].name) + '에게 ' + rp[2].repeat + '번 연속 이겼어요. 이번에 또 이기면 LP가 <b class="down">' + Math.round(rp[2].repeatMul * 100) + '%</b>만 움직여요. 다른 친구와 겨뤄 보는 건 어때요?';
     if (Math.abs(a.points - b.points) < scaled(40)) return '팽팽한 실력의 대결. 승부는 한 판으로 갈립니다.';
@@ -517,7 +521,7 @@
     if (a.teacher) return '';
     var t = teacherPlayer(), pv = GG.preview(a, t, settings(), matches());
     return '<button class="rec-item teacher-card" type="button" data-opp="' + TEACHER_ID + '" style="margin:0">' + headshot(t, 44) +
-      '<span style="min-width:0"><b>선생님에게 도전!</b> <span class="teacher-tag">BOSS</span><span class="muted" style="display:block;font-size:12px">선생님은 마스터급 LP로 고정돼요. 이기면 엄청난 보상</span></span>' +
+      '<span style="min-width:0"><b>선생님에게 도전!</b> <span class="teacher-tag">BOSS</span><span class="muted" style="display:block;font-size:12px">이기면 보스 보너스 <b class="up">+' + pv.a.boss + '</b> 포함 <b class="up">+' + pv.a.win + ' LP</b> · 져도 절반만 잃어요</span></span>' +
       '<span class="rec-gain"><span class="up">+' + pv.a.win + '</span><br><span class="down">−' + pv.a.lose + '</span></span></button>';
   }
   function recommendView(a) {
@@ -569,7 +573,7 @@
       var dt = new Date(m.t);
       var when = (dt.getMonth() + 1) + '/' + dt.getDate() + ' ' + String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0');
       var tags = (m.upset ? ' <span class="pill pill-gold">역전승</span>' : '') + (m.bonus ? ' <span class="pill pill-up">연승 +' + m.bonus + '</span>' : '') +
-        (m.shield ? ' <span class="pill">연패 보호</span>' : '') + (m.repeat ? ' <span class="pill pill-down">같은 상대 ' + (m.repeat + 1) + '연승 · LP ' + Math.round(m.repeatMul * 100) + '%</span>' : '') + (m.edited ? ' <span class="pill">수정됨</span>' : '');
+        (m.shield ? ' <span class="pill">연패 보호</span>' : '') + (m.boss ? ' <span class="pill pill-gold">보스 처치 +' + m.boss + '</span>' : '') + (m.repeat ? ' <span class="pill pill-down">같은 상대 ' + (m.repeat + 1) + '연승 · LP ' + Math.round(m.repeatMul * 100) + '%</span>' : '') + (m.edited ? ' <span class="pill">수정됨</span>' : '');
       return '<tr><td class="num muted">' + when + '</td>' +
         '<td><span class="who">' + headshot(w, 28) + '<b>' + esc(w.name) + '</b></span></td><td class="up">승 +' + m.gain + '</td>' +
         '<td><span class="who">' + headshot(l, 28) + '<b>' + esc(l.name) + '</b></span></td><td class="down">패 ' + (m.loss ? '−' + m.loss : '±0') + '</td><td>' + tags + '</td>' +
@@ -642,6 +646,7 @@
       '<p><b>티어 차이:</b> 나보다 높은 티어를 이기면 훨씬 많이 얻고, 낮은 티어를 이기면 조금만 얻어요. 높은 티어가 낮은 티어에게 지면 크게 잃어요.</p>' +
       (s.streakBonus ? '<p><b>연승 보너스:</b> 3연승 +' + GG.calcMatch(0, 0, 2, s).bonus + ', 4연승 +' + GG.calcMatch(0, 0, 3, s).bonus + ', 5연승부터 +' + GG.calcMatch(0, 0, 9, s).bonus + '.</p>' : '') +
       (s.lossShield ? '<p><b>연패 보호:</b> 3연패부터는 잃는 LP가 절반이에요.</p>' : '') +
+      '<p><b>보스전:</b> 선생님을 이기면 보스 보너스 +' + scaled(s.teacherBonus == null ? 200 : s.teacherBonus) + ' LP를 더 받아요. 선생님에게 지면 잃는 LP는 절반이에요. 선생님은 랭킹에 없고 LP가 고정이에요.</p>' +
       (s.repeatPenalty !== false ? '<p><b>같은 상대 반복:</b> 같은 친구를 연달아 이길수록 움직이는 LP가 줄어요 (2연승째 70%, 3연승째 50%, 4연승째 30%, 그 뒤 10%). 그 친구에게 한 번 지면 다시 100%예요. 여러 친구와 겨뤄야 빨리 올라가요.</p>' : '') +
       '<p>결과는 <b>진 친구가 확인</b>해야 기록돼요. LP는 0 아래로 내려가지 않아요.</p></section>' +
       '<section class="panel section"><h2>티어별 LP (비슷한 상대)</h2><div class="table-wrap"><table class="example-table"><thead><tr><th>티어</th><th>이기면</th><th>지면</th></tr></thead><tbody>' + per + '</tbody></table></div>' +
@@ -686,7 +691,11 @@
       [[300, '아주 좁게 · 챌린저 200 추천'], [400, '좁게 · 기본'], [800, '보통'], [1200, '넓게']].map(function (o) { return '<option value="' + o[0] + '"' + ((s.eloScale || 400) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
       '<div class="row-actions" style="justify-content:flex-start"><button class="btn btn-sm" type="button" data-act="preset-2w">2주 시즌 추천값 채우기</button></div>' +
       '<p class="muted" style="margin:0;font-size:13px"><b>주의:</b> 규칙을 저장하면 이번 시즌 경기까지 새 규칙으로 다시 계산돼요. 새 시즌을 시작(시즌 초기화)한 뒤에 바꾸는 걸 추천해요.</p>' +
-      '<div class="form-row"><label for="set-tlp">선생님 계정 LP (보스 난이도, 높을수록 이겼을 때 보상이 커요)</label><select class="input" id="set-tlp">' +
+      '<div class="form-row"><label for="set-tbonus">선생님을 이겼을 때 보스 보너스</label><select class="input" id="set-tbonus">' +
+      [[0, '없음'], [100, '티어 반 칸'], [200, '티어 한 칸 · 기본'], [300, '티어 한 칸 반'], [400, '티어 두 칸']].map(function (o) {
+        var cur = s.teacherBonus == null ? 200 : s.teacherBonus;
+        return '<option value="' + o[0] + '"' + (cur === o[0] ? ' selected' : '') + '>' + o[1] + ' (+' + scaled(o[0]) + ' LP)</option>'; }).join('') + '</select></div>' +
+      '<div class="form-row"><label for="set-tlp">선생님 계정 LP (높을수록 기본 보상도 커요)</label><select class="input" id="set-tlp">' +
       [800, 1000, 1200, 1400, 1700, 2000].map(function (v) { return '<option value="' + v + '"' + (teacherLP() === v ? ' selected' : '') + '>' + GG.getRank(scaled(v)).label + ' (' + scaled(v) + ' LP)</option>'; }).join('') + '</select></div>' +
       '<div class="form-row"><label for="set-end">이번 시즌 종료일 (로비에 안내돼요)</label><input class="input" id="set-end" type="date" value="' + esc(seasonEnd()) + '"></div>' +
       '<label class="check"><input type="checkbox" id="set-streak"' + (s.streakBonus ? ' checked' : '') + '> 연승 보너스</label>' +
@@ -794,7 +803,7 @@
         var r = GG.getRank(p.points), off = !login && (p.id === other || p.away || (personal() && p.id === me));
         return '<button class="card' + (p.teacher ? ' teacher-card' : '') + '" type="button" data-choose="' + esc(p.id) + '" data-side="' + sideKey + '"' + (off ? ' disabled' : '') + '>' +
           '<div class="card-stage" style="background:' + tierGlow(r) + '"><span class="card-pos">' + (p.teacher ? 'T' : login ? p.no : i) + '</span>' + crest(r, 34) + avatarFull(p) + '</div>' +
-          '<span class="card-name">' + esc(p.name) + '</span><span class="card-tier">' + (p.teacher ? '선생님 · 이기면 대박' : p.away ? '쉬는 중' : r.label) + '</span></button>';
+          '<span class="card-name">' + esc(p.name) + '</span><span class="card-tier">' + (p.teacher ? 'BOSS · 이기면 보너스' : p.away ? '쉬는 중' : r.label) + '</span></button>';
       }).join('') + '</div></div>');
   }
 
@@ -970,7 +979,7 @@
       '<div class="result-line"><span class="who">' + headshot(w, 36) + '<span><b>' + esc(w.name) + '</b><span class="sub">' + wr1.label + ' · ' + m.after.a + ' LP' + (m.bonus ? ' · 연승 보너스 +' + m.bonus : '') + '</span></span></span>' +
       '<span class="result-delta up" id="gain-count">+0</span>' + lpBar(wr1, startPct) + '</div>' +
       '<div class="result-line"><span class="who">' + headshot(l, 36) + '<span><b>' + esc(l.name) + '</b><span class="sub">' + lr1.label + ' · ' + m.after.b + ' LP</span></span></span>' +
-      '<span class="result-delta down">' + (m.loss ? '−' + m.loss : '±0') + '</span>' + (m.shield ? '<span class="sub" style="grid-column:1/-1">연패 보호로 절반만 잃었어요</span>' : '') + (m.repeat ? '<span class="sub" style="grid-column:1/-1">같은 상대에게 ' + (m.repeat + 1) + '연승이라 LP가 ' + Math.round(m.repeatMul * 100) + '%만 움직였어요. 다른 친구에게 도전해 보세요!</span>' : '') + '</div>' + demote + '</div>' + promo +
+      '<span class="result-delta down">' + (m.loss ? '−' + m.loss : '±0') + '</span>' + (m.shield ? '<span class="sub" style="grid-column:1/-1">연패 보호로 절반만 잃었어요</span>' : '') + (m.boss ? '<span class="sub" style="grid-column:1/-1;color:var(--gold-hi)">선생님을 이겼어요! 보스 보너스 +' + m.boss + ' LP</span>' : '') + (m.repeat ? '<span class="sub" style="grid-column:1/-1">같은 상대에게 ' + (m.repeat + 1) + '연승이라 LP가 ' + Math.round(m.repeatMul * 100) + '%만 움직였어요. 다른 친구에게 도전해 보세요!</span>' : '') + '</div>' + demote + '</div>' + promo +
       '<div class="row-actions" style="justify-content:center"><button class="btn btn-ghost" type="button" data-act="undo-now" data-id="' + esc(m.id) + '">잘못 기록했어요</button><button class="btn btn-gold" type="button" data-act="close">계속하기</button></div></div>');
     // LP 숫자 올라가기 + 막대 채우기
     var counter = document.getElementById('gain-count'), start = performance.now();
@@ -1309,7 +1318,8 @@
           startPoints: parseInt(document.getElementById('set-start').value, 10) || 0,
           streakBonus: document.getElementById('set-streak').checked,
           seasonEnd: document.getElementById('set-end').value,
-          teacherLP: parseInt(document.getElementById('set-tlp').value, 10) || 1400
+          teacherLP: parseInt(document.getElementById('set-tlp').value, 10) || 1400,
+          teacherBonus: parseInt(document.getElementById('set-tbonus').value, 10)
         })).then(function () { toast('규칙을 저장했어요'); }, fail);
         break;
       case 'copy-backup':

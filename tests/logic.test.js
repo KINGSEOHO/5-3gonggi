@@ -157,3 +157,17 @@ test('같은 상대 반복 연승: LP가 100→70→50→30→10%, 지면 다시
   const mix = GG.replay(['x', 'y', 'z'], [{ id: 'a', a: 'x', b: 'y', t: 1 }, { id: 'b', a: 'x', b: 'z', t: 2 }, { id: 'c', a: 'x', b: 'y', t: 3 }], { streakBonus: false });
   assert.deepStrictEqual(mix.matches.map((m) => m.repeatMul), [1, 1, 0.7]);
 });
+
+test('선생님(보스)을 이기면 보스 보너스, 지면 잃는 LP 절반', () => {
+  const st = { tierScale: 0.1, baseLP: 10, pyramid: 0.5, eloScale: 300, startPoints: 200 };
+  const r = GG.replay(['kid', 'kid2', '선생님'], [{ id: '1', a: 'kid', b: '선생님', t: 1 }, { id: '2', a: 'kid2', b: 'kid', t: 2 }], st, [], { '선생님': 200 });
+  const normal = GG.calcMatch(20, 20, 0, st);
+  assert.strictEqual(r.matches[0].boss, 20);                 // 티어 한 칸
+  assert.ok(r.matches[0].gain >= normal.gain + 20, JSON.stringify(r.matches[0]));
+  const lose = GG.replay(['kid', '선생님'], [{ id: '1', a: '선생님', b: 'kid', t: 1 }], Object.assign({}, st, { startPoints: 600 }), [], { '선생님': 200 });
+  const plain = GG.calcMatch(200, 60, 0, st);
+  assert.ok(lose.matches[0].loss <= Math.ceil(plain.loss / 2));
+  const pv = GG.preview({ id: 'kid', points: 20, streak: 0 }, { id: '선생님', points: 200, streak: 0, teacher: true }, st, []);
+  assert.strictEqual(pv.a.boss, 20);
+  GG.setTierScale(1);
+});

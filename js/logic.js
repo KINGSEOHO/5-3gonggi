@@ -90,7 +90,8 @@
      repeat = 이번 판 전까지 이 상대를 연속으로 이긴 횟수 */
   var REPEAT_MUL = [1, 0.7, 0.5, 0.3, 0.1];
   function repeatMul(n) { return REPEAT_MUL[Math.min(n || 0, REPEAT_MUL.length - 1)]; }
-  function calcMatch(winnerPoints, loserPoints, winnerStreak, settings, loserStreak, repeat) {
+  /* boss: 'win' = 선생님(보스)을 이김 → 보스 보너스, 'lose' = 선생님에게 짐 → 잃는 LP 절반 */
+  function calcMatch(winnerPoints, loserPoints, winnerStreak, settings, loserStreak, repeat, boss) {
     var s = Object.assign({}, DEFAULT_SETTINGS, settings || {});
     setTierScale(s.tierScale);
     var base = s.baseLP || s.winBase || 25;
@@ -113,12 +114,17 @@
     var upset = getRank(loserPoints).value - getRank(winnerPoints).value >= 4; // 한 티어 이상 위를 이김
     // 같은 상대 반복 감소: 이긴 쪽이 얻는 LP(보너스 포함)와 진 쪽이 잃는 LP를 같은 비율로 줄인다
     var rm = s.repeatPenalty === false ? 1 : repeatMul(repeat);
+    // 선생님(보스)을 이기면 보너스: teacherBonus 는 챌린저 2000 기준 LP (기본 200 = 티어 한 칸)
+    var bossBonus = 0;
+    if (boss === 'win') bossBonus = Math.round((s.teacherBonus == null ? 200 : Number(s.teacherBonus)) * (Number(s.tierScale) || 1));
+    if (boss === 'lose') loss = Math.ceil(loss / 2);
     if (rm < 1) {
       gain = Math.max(1, Math.round(gain * rm));
       bonus = Math.round(bonus * rm);
       loss = Math.min(loserPoints, Math.max(loss ? 1 : 0, Math.round(loss * rm)));
     }
-    return { gain: gain, bonus: bonus, total: gain + bonus, loss: loss, shield: shield, upset: upset, winChance: eWin, repeat: rm < 1 ? repeat : 0, repeatMul: rm };
+    if (bossBonus) bonus += Math.max(1, Math.round(bossBonus * rm));
+    return { gain: gain, bonus: bonus, total: gain + bonus, loss: loss, shield: shield, upset: upset, winChance: eWin, repeat: rm < 1 ? repeat : 0, repeatMul: rm, boss: boss === 'win' ? Math.max(1, Math.round(bossBonus * rm)) : 0, bossLose: boss === 'lose' };
   }
 
   /* 두 사람이 붙었을 때 각자 이기면/지면 얼마인지 */
@@ -133,11 +139,12 @@
     return n;
   }
   function preview(a, b, settings, matches) {
-    var aWins = calcMatch(a.points, b.points, a.streak > 0 ? a.streak : 0, settings, b.streak < 0 ? -b.streak : 0, repeatCount(matches, a.id, b.id));
-    var bWins = calcMatch(b.points, a.points, b.streak > 0 ? b.streak : 0, settings, a.streak < 0 ? -a.streak : 0, repeatCount(matches, b.id, a.id));
+    // a, b 에 teacher: true 가 있으면 선생님(보스)
+    var aWins = calcMatch(a.points, b.points, a.streak > 0 ? a.streak : 0, settings, b.streak < 0 ? -b.streak : 0, repeatCount(matches, a.id, b.id), b.teacher ? 'win' : a.teacher ? 'lose' : null);
+    var bWins = calcMatch(b.points, a.points, b.streak > 0 ? b.streak : 0, settings, a.streak < 0 ? -a.streak : 0, repeatCount(matches, b.id, a.id), a.teacher ? 'win' : b.teacher ? 'lose' : null);
     return {
-      a: { win: aWins.total, lose: bWins.loss, chance: aWins.winChance, repeat: aWins.repeat, repeatMul: aWins.repeatMul },
-      b: { win: bWins.total, lose: aWins.loss, chance: bWins.winChance, repeat: bWins.repeat, repeatMul: bWins.repeatMul }
+      a: { win: aWins.total, lose: bWins.loss, chance: aWins.winChance, repeat: aWins.repeat, repeatMul: aWins.repeatMul, boss: aWins.boss },
+      b: { win: bWins.total, lose: aWins.loss, chance: bWins.winChance, repeat: bWins.repeat, repeatMul: bWins.repeatMul, boss: bWins.boss }
     };
   }
 
@@ -223,8 +230,8 @@
   }
 
   /* 승패 결과를 학생 객체에 반영 (새 객체 반환) */
-  function applyResult(winner, loser, settings, repeat) {
-    var r = calcMatch(winner.points, loser.points, winner.streak > 0 ? winner.streak : 0, settings, loser.streak < 0 ? -loser.streak : 0, repeat);
+  function applyResult(winner, loser, settings, repeat, boss) {
+    var r = calcMatch(winner.points, loser.points, winner.streak > 0 ? winner.streak : 0, settings, loser.streak < 0 ? -loser.streak : 0, repeat, boss);
     var w = Object.assign({}, winner);
     var l = Object.assign({}, loser);
     w.points += r.total;
@@ -273,11 +280,11 @@
       }
       var w = get(m.a), l = get(m.b);
       var rk = m.a + '\u0000' + m.b, n = rep[rk] || 0;
-      var out = applyResult(w, l, s, n);
+      var out = applyResult(w, l, s, n, l.id in fixed ? 'win' : w.id in fixed ? 'lose' : null);
       rep[rk] = n + 1; rep[m.b + '\u0000' + m.a] = 0;
       results.push({
         id: m.id, a: m.a, b: m.b, t: m.t, by: m.by, edited: m.edited,
-        gain: out.result.total, bonus: out.result.bonus, loss: out.result.loss, shield: out.result.shield, upset: out.result.upset, repeat: out.result.repeat, repeatMul: out.result.repeatMul,
+        gain: out.result.total, bonus: out.result.bonus, loss: out.result.loss, shield: out.result.shield, upset: out.result.upset, repeat: out.result.repeat, repeatMul: out.result.repeatMul, boss: out.result.boss, bossLose: out.result.bossLose,
         before: { a: { points: w.points, streak: w.streak }, b: { points: l.points, streak: l.streak } },
         after: { a: out.winner.points, b: out.loser.points }
       });
