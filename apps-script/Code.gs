@@ -250,6 +250,20 @@ function handle_(req) {
       shs.getRange(2, 1, names.length, 2).setValues(names.map(function (n, i) { return [i + 1, n]; }));
       if (req.league) setConfig_('반이름', String(req.league));
       break;
+    case 'autoSeason':
+      // 다음 시즌 자동 시작: 규칙의 nextSeasonAt 날짜가 지났고 시즌 번호가 맞을 때만 (선생님 비밀번호 없이)
+      var rules = {};
+      try { rules = JSON.parse(c['규칙'] || '{}'); } catch (e) { rules = {}; }
+      var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      if (!rules.nextSeasonAt || today < rules.nextSeasonAt) throw new Error('아직 새 시즌 날짜가 아니에요.');
+      if ((Number(c['시즌']) || 1) !== Number(req.season)) throw new Error('ALREADY');
+      [TAB.matches, TAB.reports, TAB.adjust].forEach(function (name) {
+        var sa = sheet_(name);
+        if (sa.getLastRow() > 1) sa.deleteRows(2, sa.getLastRow() - 1);
+      });
+      setConfig_('시즌', (Number(c['시즌']) || 1) + 1);
+      setConfig_('규칙', JSON.stringify(req.settings || {}));
+      break;
     case 'resetSeason':
       teacher_(req);
       [TAB.matches, TAB.reports, TAB.adjust].forEach(function (name) {

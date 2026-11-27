@@ -586,6 +586,12 @@ textarea.code { min-height: 140px; font-family: ui-monospace, Menlo, Consolas, m
 .teacher-tag { display: inline-flex; align-items: center; gap: 4px; padding: 0 7px; font-size: 11px; font-weight: 700; border: 1px solid #2fd28a; color: #8ff0c4; background: rgba(47, 210, 138, .1); }
 .teacher-card { border-color: #2fd28a !important; }
 .wd-item .wd-req.teacher { color: #8ff0c4; }
+
+/* 역대 시즌 */
+.hist-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.hist-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border: 1px solid var(--line); background: var(--void); font-size: 13px; }
+.champ-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.champ-card { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 14px; border: 1px solid var(--gold-lo); background: rgba(200, 170, 110, .06); min-width: 110px; text-align: center; }
 </style>
 </head>
 <body>
@@ -1097,6 +1103,31 @@ window.GG_CONFIG = {
     return Promise.all([wipe('gonggi_matches'), wipe('gonggi_reports'), wipe('gonggi_adjust')]);
   };
 
+  /* 자동 새 시즌: 설정의 시즌 번호가 아직 expectSeason 일 때만 한 번 넘어간다 (여러 크롬북이 동시에 열어도 한 번)
+     cutoff 이전의 경기·선생님 LP와 확인 요청을 지운다 */
+  FirebaseStore.prototype.autoSeason = function (expectSeason, next, cutoff) {
+    var db = this.db, ref = db.collection('gonggi_settings').doc('main');
+    return db.runTransaction(function (tx) {
+      return tx.get(ref).then(function (d) {
+        var cur = (d.exists && d.data().season) || 1;
+        if (cur !== expectSeason) throw new Error('ALREADY');
+        tx.set(ref, next);
+      });
+    }).then(function () {
+      function wipe(colName, old) {
+        return db.collection(colName).get().then(function (snap) {
+          var docs = snap.docs.filter(function (x) { return !old || (x.data().t || 0) < cutoff; }), jobs = [];
+          for (var i = 0; i < docs.length; i += 400) {
+            var batch = db.batch();
+            docs.slice(i, i + 400).forEach(function (x) { batch.delete(x.ref); });
+            jobs.push(batch.commit());
+          }
+          return Promise.all(jobs);
+        });
+      }
+      return Promise.all([wipe('gonggi_matches', true), wipe('gonggi_adjust', true), wipe('gonggi_reports', false)]);
+    });
+  };
   FirebaseStore.prototype.hasPin = function (id) { return this.getPin(id).then(function (p) { return !!p; }); };
   FirebaseStore.prototype.checkPin = function (id, pin) {
     var tp = this.teacherPw;
@@ -1176,6 +1207,7 @@ window.GG_CONFIG = {
   SheetStore.prototype.addAdjust = function (p, d, note, t) { return this._post({ action: 'addAdjust', p: p, d: d, note: note, t: t }); };
   SheetStore.prototype.deleteAdjust = function (id) { return this._post({ action: 'deleteAdjust', id: id }); };
   SheetStore.prototype.resetSeason = function () { return this._post({ action: 'resetSeason' }); };
+  SheetStore.prototype.autoSeason = function (expectSeason, next) { return this._post({ action: 'autoSeason', season: expectSeason, settings: next }); };
 
   /* ───────── 체험: 이 브라우저에만 ───────── */
   var LOCAL_KEY = 'gonggi-legends-demo-v3';
@@ -1237,6 +1269,14 @@ window.GG_CONFIG = {
   };
   LocalStore.prototype.deleteAdjust = function (id) {
     this.data.adjusts = this.data.adjusts.filter(function (a) { return a.id !== id; });
+    this._save(); return Promise.resolve();
+  };
+  LocalStore.prototype.autoSeason = function (expectSeason, next, cutoff) {
+    if ((this.data.settings.season || 1) !== expectSeason) return Promise.reject(new Error('ALREADY'));
+    this.data.settings = next;
+    this.data.matches = this.data.matches.filter(function (m) { return m.t >= cutoff; });
+    this.data.adjusts = this.data.adjusts.filter(function (m) { return m.t >= cutoff; });
+    this.data.reports = {};
     this._save(); return Promise.resolve();
   };
   LocalStore.prototype.resetSeason = function () { this.data.matches = []; this.data.reports = {}; this.data.adjusts = []; this._save(); return Promise.resolve(); };
@@ -1877,6 +1917,11 @@ window.GG_CONFIG = {
       var wk = '일월화수목금토'.charAt(e.getDay());
       txt += ' <b>시즌 ' + SEASON + '</b> 종료일은 <b>' + (e.getMonth() + 1) + '월 ' + e.getDate() + '일(' + wk + ')</b>이에요' +
         (days > 0 ? ' <span class="pill pill-gold">D-' + days + '</span>' : days === 0 ? ' <span class="pill pill-gold">오늘 마감</span>' : ' <span class="pill">종료됨</span>');
+      var ns = nextStart();
+      if (ns && days <= 0) {
+        var n = new Date(ns + 'T12:00:00');
+        txt += '<br><b>시즌 ' + (SEASON + 1) + '</b>은(는) <b>' + (n.getMonth() + 1) + '월 ' + n.getDate() + '일(' + '일월화수목금토'.charAt(n.getDay()) + ')</b>에 자동으로 시작해요. 이번 시즌 성적의 ' + Math.round(carryRate() * 100) + '%가 시작점에 반영돼요.';
+      }
     }
     return '<div class="season-note">' + navIcon('M7 2h2v2h6V2h2v2h3a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3zm-2 8v9h14v-9zm0-2h14V6H5z', 18) + '<span>' + txt + '</span></div>';
   }
@@ -2187,7 +2232,7 @@ window.GG_CONFIG = {
       (rows ? '<div class="table-wrap"><table><thead><tr><th>시간</th><th>승자</th><th></th><th>패자</th><th></th><th></th>' + (ui.teacher ? '<th>관리</th>' : '') + '</tr></thead><tbody>' + rows + '</tbody></table></div>' : '<div class="empty">아직 경기 기록이 없어요.</div>') +
       (ms.length > FOLD ? '<div class="row-actions" style="justify-content:center"><button class="btn" type="button" data-act="hist-fold">' +
         (folded ? '▼ 나머지 ' + (ms.length - FOLD) + '경기 펼치기' : '▲ 접기 (최근 ' + FOLD + '경기만)') + '</button></div>' : '') + '</section>' +
-      adjustHistory(f);
+      adjustHistory(f) + historyTable();
   };
 
   function adjustHistory(f) {
@@ -2293,6 +2338,7 @@ window.GG_CONFIG = {
       '<div class="form-row"><label for="set-tlp">선생님 계정 LP (높을수록 기본 보상도 커요)</label><select class="input" id="set-tlp">' +
       [800, 1000, 1200, 1400, 1700, 2000].map(function (v) { return '<option value="' + v + '"' + (teacherLP() === v ? ' selected' : '') + '>' + GG.getRank(scaled(v)).label + ' (' + scaled(v) + ' LP)</option>'; }).join('') + '</select></div>' +
       '<div class="form-row"><label for="set-end">이번 시즌 종료일 (로비에 안내돼요)</label><input class="input" id="set-end" type="date" value="' + esc(seasonEnd()) + '"></div>' +
+      '<div class="form-row"><label for="set-next">다음 시즌 자동 시작일 (이 날 처음 앱을 열 때 새 시즌으로 넘어가요 · 비우면 자동 시작 안 함)</label><input class="input" id="set-next" type="date" value="' + esc(nextStart()) + '"></div>' +
       '<label class="check"><input type="checkbox" id="set-streak"' + (s.streakBonus ? ' checked' : '') + '> 연승 보너스</label>' +
       '<div class="row-actions"><button class="btn btn-gold" type="button" data-act="save-settings">규칙 저장</button></div>' +
       '</section>' +
@@ -2321,11 +2367,82 @@ window.GG_CONFIG = {
       '<p class="muted" style="margin:0;font-size:14px">이미 시즌을 초기화했다면, 지난 시즌 <b>백업 코드</b>를 붙여넣어 이번 시즌 시작점을 정할 수 있어요. 적용하면 이번 시즌 경기도 새 시작점에서 다시 계산돼요.</p>' +
       (settings().carry ? '<p style="margin:0;font-size:14px"><span class="pill pill-gold">이월 적용 중</span> ' + Object.keys(settings().carry).length + '명 · 반영 ' + Math.round(carryRate() * 100) + '% <button class="btn btn-sm btn-ghost" type="button" data-act="carry-clear">이월 지우기</button></p>' : '') +
       '<textarea class="input" id="carry-text" style="min-height:70px" placeholder="지난 시즌 백업 코드를 붙여넣어 주세요" aria-label="지난 시즌 백업 코드"></textarea>' +
-      '<div class="row-actions" style="justify-content:flex-start"><button class="btn" type="button" data-act="carry-preview">미리 보기</button></div><div id="carry-out"></div></section></div></div>';
+      '<div class="row-actions" style="justify-content:flex-start"><button class="btn" type="button" data-act="carry-preview">미리 보기</button>' +
+      '<input class="input" id="hist-season" type="number" min="1" style="width:110px" placeholder="시즌 번호" aria-label="시즌 번호"><button class="btn" type="button" data-act="hist-add">이 백업을 역대 시즌에 추가</button></div><div id="carry-out"></div></section></div></div>';
   };
 
   /* 시즌 이월 */
   function carryRate() { var r = settings().carryRate; return r == null ? 0.5 : Number(r); }
+  function todayYMD() { return addDays('', 0); }
+  function nextStart() { return settings().nextSeasonAt || ''; }
+  /* 이번 시즌 최종 결과 (역대 기록용): {이름: {t: 티어 이름, v: 티어 값, p: LP, w, l, k: 순위}} */
+  function seasonRecord() {
+    var r = {};
+    sorted().forEach(function (p, i) {
+      if (!(p.wins + p.losses)) return;
+      var rk = GG.getRank(p.points);
+      r[p.id] = { t: rk.label, v: rk.value, p: p.points, w: p.wins, l: p.losses, k: i + 1 };
+    });
+    return { s: SEASON, end: seasonEnd(), r: r };
+  }
+  /* 다음 시즌 설정: 추천 규칙 + 이월 + 역대 기록 + 날짜 (start = 새 시즌 시작일) */
+  function nextSeasonSettings(rate, start) {
+    var end = addDays(start, 11);                    // 2주 뒤 금요일
+    var hist = (settings().history || []).filter(function (h) { return h.s !== SEASON; }).concat([seasonRecord()]);
+    var next = Object.assign({ repeatPenalty: true, teacherBonus: 200 }, settings(), PRESET_2W, { seasonEnd: end, nextSeasonAt: addDays(end, 3), carryRate: rate, history: hist });
+    next.carry = rate > 0 ? GG.carryStarts(studentStats(calc.players), settings(), rate, PRESET_2W.startPoints) : null;
+    if (!next.carry) delete next.carry;
+    if (!SHEET) next.season = SEASON + 1;
+    return next;
+  }
+  /* 월요일 자동 새 시즌: 날짜가 지난 뒤 처음 앱을 연 크롬북이 한 번 넘긴다 */
+  var autoTried = false;
+  function maybeAutoSeason() {
+    if (autoTried || !store || !store.autoSeason || !calc || !data) return;
+    var at = nextStart();
+    if (!at || todayYMD() < at) return;
+    autoTried = true;
+    var next = nextSeasonSettings(carryRate(), at);
+    store.autoSeason(SEASON, next, new Date(at + 'T00:00:00').getTime()).then(function () {
+      ui.pairs = null; toast('새 시즌이 시작됐어요! 지난 시즌 성적이 ' + Math.round(carryRate() * 100) + '% 반영됐어요');
+    }, function (e) { if (!(e && /ALREADY/.test(e.message))) autoTried = false; });
+  }
+  function rankFromHist(h) {
+    var idx = Math.floor(h.v / 4), t = GG.TIERS[idx];
+    return { tier: t, tierIndex: idx, division: t.divs ? GG.ROMAN[h.v % 4] : '', label: h.t };
+  }
+  function historyChips(id) {
+    var hs = (settings().history || []).filter(function (h) { return h.r && h.r[id]; });
+    if (!hs.length) return '';
+    return '<div class="hist-chips">' + hs.map(function (h) {
+      var x = h.r[id];
+      return '<span class="hist-chip" title="시즌 ' + h.s + ' · ' + x.w + '승 ' + x.l + '패 · ' + x.k + '위">' + crest(rankFromHist(x), 30) + '<span><b>S' + h.s + '</b> ' + esc(x.t) + (x.k <= 3 ? ' <span class="pill pill-gold">' + x.k + '위</span>' : '') + '</span></span>';
+    }).join('') + '</div>';
+  }
+  function historyTable() {
+    var hs = (settings().history || []).slice().sort(function (a, b) { return a.s - b.s; });
+    if (!hs.length) return '';
+    var champs = hs.map(function (h) {
+      var top = Object.keys(h.r).filter(function (n) { return h.r[n].k === 1; })[0];
+      return '<div class="champ-card">' + (top ? crest(rankFromHist(h.r[top]), 46) : '') + '<span class="eyebrow">Season ' + h.s + '</span><b>' + (top ? esc(top) : '-') + '</b><span class="muted" style="font-size:12px">' + (top ? esc(h.r[top].t) : '') + '</span></div>';
+    }).join('');
+    var rows = players().slice().sort(function (a, b) { return a.no - b.no; }).map(function (p) {
+      return '<tr><td><span class="who">' + headshot(p, 26) + '<b>' + esc(p.name) + '</b></span></td>' + hs.map(function (h) {
+        var x = h.r[p.id];
+        return '<td>' + (x ? '<span class="tier-tag">' + crest(rankFromHist(x), 24) + '<span>' + esc(x.t) + '</span></span>' : '<span class="muted">-</span>') + '</td>';
+      }).join('') + '</tr>';
+    }).join('');
+    return '<section class="panel gilded section"><h2>역대 시즌</h2><div class="champ-row">' + champs + '</div>' +
+      '<div class="table-wrap"><table><thead><tr><th>이름</th>' + hs.map(function (h) { return '<th>시즌 ' + h.s + '</th>'; }).join('') + '</tr></thead><tbody>' + rows + '</tbody></table></div></section>';
+  }
+  /* 예전 백업은 그 시즌 규칙으로 계산: 그때 없던 규칙(같은 상대 반복 감소, 보스 보너스)은 끈다 */
+  function backupRules(st) {
+    var r = Object.assign({}, st || {});
+    if (r.repeatPenalty == null) r.repeatPenalty = false;
+    if (r.teacherBonus == null) r.teacherBonus = 0;
+    return r;
+  }
+  function backupFixed(st) { var f = {}; f[TEACHER_ID] = Math.round(((st && st.teacherLP) || 1400) * (Number(st && st.tierScale) || 1)); return f; }
   function studentStats(P) { var o = {}; ROSTER.forEach(function (st) { if (P[st.name]) o[st.name] = P[st.name]; }); return o; }
   function carryTable(prevP, prevS, starts) {
     var keep = tscale();
@@ -2426,6 +2543,7 @@ window.GG_CONFIG = {
       (ui.teacher ? '<div class="row-actions" style="justify-content:flex-start;align-items:center"><span class="label">선생님 LP</span>' + [10, 5, -5, -10].map(qlp).map(function (n) {
         return '<button class="btn btn-sm' + (n < 0 ? ' btn-danger' : '') + '" type="button" data-adjone="' + esc(id) + '" data-adjv="' + n + '">' + (n > 0 ? '+' : '−') + Math.abs(n) + '</button>';
       }).join('') + '</div>' : '') +
+      (historyChips(id) ? '<h3>역대 시즌</h3>' + historyChips(id) : '') +
       '<h3>최근 대결</h3>' + recent + '</div>');
   }
 
@@ -2721,13 +2839,28 @@ window.GG_CONFIG = {
         try { bk = JSON.parse(raw); } catch (e2) { bk = null; }
         if (!bk || !Array.isArray(bk.matches)) { outEl.innerHTML = '<p class="form-error">백업 코드가 아니에요. 선생님 메뉴 → 백업 코드 복사로 만든 글자를 처음부터 끝까지 붙여넣어 주세요.</p>'; break; }
         var keepScale = tscale();
-        var prevCalc = GG.replay(ROSTER.map(function (st) { return st.name; }), bk.matches, bk.settings || {}, bk.adjusts || [], {});
+        var prevCalc = GG.replay(ROSTER.map(function (st) { return st.name; }).concat([TEACHER_ID]), bk.matches, backupRules(bk.settings), bk.adjusts || [], backupFixed(bk.settings));
         var rate2 = parseFloat((document.getElementById('carry-rate') || {}).value); if (isNaN(rate2)) rate2 = 0.5;
         ui.carryDraft = { starts: GG.carryStarts(studentStats(prevCalc.players), bk.settings || {}, rate2, settings().startPoints || 200), rate: rate2 };
         outEl.innerHTML = '<p class="muted" style="margin:0;font-size:13px">지난 시즌 경기 ' + bk.matches.length + '판' + (bk.adjusts ? '' : ' (이 백업에는 선생님이 준 LP가 없어요)') + ' · 반영 ' + Math.round(rate2 * 100) + '%</p>' +
           carryTable(studentStats(prevCalc.players), bk.settings || {}, ui.carryDraft.starts) +
           '<div class="row-actions"><button class="btn btn-gold" type="button" data-act="carry-apply">이번 시즌에 적용</button></div>';
         GG.setTierScale(keepScale);
+        break;
+      case 'hist-add':
+        var rawH = document.getElementById('carry-text').value.trim(), sn = parseInt(document.getElementById('hist-season').value, 10), bh = null;
+        try { bh = JSON.parse(rawH); } catch (e3) { bh = null; }
+        if (!bh || !Array.isArray(bh.matches)) { toast('백업 코드를 먼저 붙여넣어 주세요', true); break; }
+        if (!sn) sn = bh.season || (bh.settings && bh.settings.season);
+        if (!sn) { toast('몇 번째 시즌 백업인지 시즌 번호를 넣어 주세요', true); break; }
+        var keepS = tscale();
+        var pc = GG.replay(ROSTER.map(function (st) { return st.name; }).concat([TEACHER_ID]), bh.matches, backupRules(bh.settings), bh.adjusts || [], backupFixed(bh.settings));
+        var order = ROSTER.map(function (st) { return pc.players[st.name]; }).filter(function (p) { return p && (p.wins + p.losses); }).sort(function (a, b) { return b.points - a.points || b.wins - a.wins; });
+        var rec = {};
+        order.forEach(function (p, i) { var rk = GG.getRank(p.points); rec[p.id] = { t: rk.label, v: rk.value, p: p.points, w: p.wins, l: p.losses, k: i + 1 }; });
+        GG.setTierScale(keepS);
+        var hist2 = (settings().history || []).filter(function (h) { return h.s !== sn; }).concat([{ s: sn, end: (bh.settings && bh.settings.seasonEnd) || '', r: rec }]).sort(function (a, b) { return a.s - b.s; });
+        store.saveSettings(Object.assign({}, settings(), { history: hist2 })).then(function () { toast('시즌 ' + sn + ' 기록을 역대 시즌에 넣었어요 (' + order.length + '명)'); }, fail);
         break;
       case 'carry-apply':
         if (!ui.carryDraft) break;
@@ -2913,6 +3046,7 @@ window.GG_CONFIG = {
           startPoints: parseInt(document.getElementById('set-start').value, 10) || 0,
           streakBonus: document.getElementById('set-streak').checked,
           seasonEnd: document.getElementById('set-end').value,
+          nextSeasonAt: document.getElementById('set-next').value,
           teacherLP: parseInt(document.getElementById('set-tlp').value, 10) || 1400,
           teacherBonus: parseInt(document.getElementById('set-tbonus').value, 10)
         })).then(function () { toast('규칙을 저장했어요'); }, fail);
@@ -2932,11 +3066,9 @@ window.GG_CONFIG = {
           '새 시즌에는 <b>2주 시즌 추천 규칙</b>(챌린저 200 LP, 기준 LP 10)이 자동으로 적용되고, 종료일은 <b>' + nextEnd + '</b>로 정해져요. 지난 시즌 성적은 <b>' + Math.round((parseFloat((document.getElementById('carry-rate') || {}).value) || 0) * 100) + '%</b> 반영돼요.', '시즌 초기화', function () {
           var rate = parseFloat((document.getElementById('carry-rate') || {}).value);
           if (isNaN(rate)) rate = carryRate();
-          var next = Object.assign({}, settings(), PRESET_2W, { seasonEnd: nextEnd, carryRate: rate });
-          // 지난 시즌 성적 이월: 지금(초기화 전) 점수로 시작점 계산
-          next.carry = rate > 0 ? GG.carryStarts(studentStats(calc.players), settings(), rate, PRESET_2W.startPoints) : null;
-          if (!next.carry) delete next.carry;
-          if (!SHEET) next.season = SEASON + 1;
+          // 지난 시즌 성적 이월 + 역대 기록: 지금(초기화 전) 점수로 계산
+          var next = nextSeasonSettings(rate, todayYMD());
+          next.seasonEnd = nextEnd; next.nextSeasonAt = addDays(nextEnd, 3);
           store.resetSeason().then(function () { return store.saveSettings(next); }).then(function () {
             ui.pairs = null; toast('새 시즌 시작! (시즌 ' + (SHEET ? SEASON + 1 : next.season) + ') 추천 규칙을 적용했어요');
           }, fail);
@@ -3007,13 +3139,14 @@ window.GG_CONFIG = {
       LEAGUE = d.league || LEAGUE; SEASON = d.season || SEASON;
     } else if (d.settings && d.settings.season) {
       SEASON = d.settings.season;
-      if (me && me !== TEACHER_ID && !ROSTER.some(function (st) { return st.name === me; })) { me = null; }
     }
+    if (SHEET && me && me !== TEACHER_ID && !ROSTER.some(function (st) { return st.name === me; })) { me = null; }
     var fixed = {}; fixed[TEACHER_ID] = Math.round(((d.settings && d.settings.teacherLP) || 1400) * (Number(d.settings && d.settings.tierScale) || 1));
     calc = GG.replay(ROSTER.map(function (st) { return st.name; }).concat([TEACHER_ID]), d.matches, d.settings, d.adjusts, fixed);
     render();
     fresh = fresh.filter(function (m) { return !wantResult[m.id]; }).map(function (m) { return matchById(m.id); }).filter(Boolean);
     if (!showWanted() && fresh.length && !layer.querySelector('.result')) showResult(fresh[fresh.length - 1]);
+    maybeAutoSeason();
   },
     function () { toast(SHEET ? '선생님 시트에 연결하지 못했어요. 링크가 맞는지, 인터넷이 되는지 확인해 주세요.' : '리그 정보를 불러오지 못했어요. Firestore 규칙에서 gonggi_ 컬렉션을 허용했는지 확인해 주세요.', true); });
 })();

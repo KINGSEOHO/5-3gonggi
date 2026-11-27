@@ -96,3 +96,16 @@ test('선생님 계정: 대결 기록 가능, 꾸미기는 선생님 비밀번�
   assert.ok(g.post({ action: 'updatePlayer', id: '선생님', fields: { hat: 'mortarboard' }, teacherPw: 'abcd' }).ok);
   assert.strictEqual(g.get('state').players['선생님'].hat, 'mortarboard');
 });
+
+test('자동 새 시즌: 날짜가 지나야 하고 시즌 번호가 맞을 때 한 번만', () => {
+  const g = setup();
+  g.post({ action: 'record', w: '가', l: '나' });
+  assert.strictEqual(g.post({ action: 'autoSeason', season: 1, settings: { x: 1 } }).ok, false); // 날짜 설정 없음
+  g.post({ action: 'saveSettings', settings: { nextSeasonAt: '2099-01-01' }, teacherPw: 'abcd' });
+  assert.strictEqual(g.post({ action: 'autoSeason', season: 1, settings: { x: 1 } }).ok, false); // 아직 아님
+  g.post({ action: 'saveSettings', settings: { nextSeasonAt: '2000-01-01' }, teacherPw: 'abcd' });
+  assert.ok(g.post({ action: 'autoSeason', season: 1, settings: { nextSeasonAt: '2099-01-01', history: [{ s: 1 }] } }).ok);
+  const s = g.get('state');
+  assert.strictEqual(s.season, 2); assert.strictEqual(s.matches.length, 0); assert.strictEqual(s.settings.history.length, 1);
+  assert.strictEqual(g.post({ action: 'autoSeason', season: 1, settings: {} }).ok, false); // 두 번째는 거절
+});

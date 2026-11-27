@@ -118,6 +118,31 @@
     return Promise.all([wipe('gonggi_matches'), wipe('gonggi_reports'), wipe('gonggi_adjust')]);
   };
 
+  /* 자동 새 시즌: 설정의 시즌 번호가 아직 expectSeason 일 때만 한 번 넘어간다 (여러 크롬북이 동시에 열어도 한 번)
+     cutoff 이전의 경기·선생님 LP와 확인 요청을 지운다 */
+  FirebaseStore.prototype.autoSeason = function (expectSeason, next, cutoff) {
+    var db = this.db, ref = db.collection('gonggi_settings').doc('main');
+    return db.runTransaction(function (tx) {
+      return tx.get(ref).then(function (d) {
+        var cur = (d.exists && d.data().season) || 1;
+        if (cur !== expectSeason) throw new Error('ALREADY');
+        tx.set(ref, next);
+      });
+    }).then(function () {
+      function wipe(colName, old) {
+        return db.collection(colName).get().then(function (snap) {
+          var docs = snap.docs.filter(function (x) { return !old || (x.data().t || 0) < cutoff; }), jobs = [];
+          for (var i = 0; i < docs.length; i += 400) {
+            var batch = db.batch();
+            docs.slice(i, i + 400).forEach(function (x) { batch.delete(x.ref); });
+            jobs.push(batch.commit());
+          }
+          return Promise.all(jobs);
+        });
+      }
+      return Promise.all([wipe('gonggi_matches', true), wipe('gonggi_adjust', true), wipe('gonggi_reports', false)]);
+    });
+  };
   FirebaseStore.prototype.hasPin = function (id) { return this.getPin(id).then(function (p) { return !!p; }); };
   FirebaseStore.prototype.checkPin = function (id, pin) {
     var tp = this.teacherPw;
@@ -197,6 +222,7 @@
   SheetStore.prototype.addAdjust = function (p, d, note, t) { return this._post({ action: 'addAdjust', p: p, d: d, note: note, t: t }); };
   SheetStore.prototype.deleteAdjust = function (id) { return this._post({ action: 'deleteAdjust', id: id }); };
   SheetStore.prototype.resetSeason = function () { return this._post({ action: 'resetSeason' }); };
+  SheetStore.prototype.autoSeason = function (expectSeason, next) { return this._post({ action: 'autoSeason', season: expectSeason, settings: next }); };
 
   /* ───────── 체험: 이 브라우저에만 ───────── */
   var LOCAL_KEY = 'gonggi-legends-demo-v3';
@@ -258,6 +284,14 @@
   };
   LocalStore.prototype.deleteAdjust = function (id) {
     this.data.adjusts = this.data.adjusts.filter(function (a) { return a.id !== id; });
+    this._save(); return Promise.resolve();
+  };
+  LocalStore.prototype.autoSeason = function (expectSeason, next, cutoff) {
+    if ((this.data.settings.season || 1) !== expectSeason) return Promise.reject(new Error('ALREADY'));
+    this.data.settings = next;
+    this.data.matches = this.data.matches.filter(function (m) { return m.t >= cutoff; });
+    this.data.adjusts = this.data.adjusts.filter(function (m) { return m.t >= cutoff; });
+    this.data.reports = {};
     this._save(); return Promise.resolve();
   };
   LocalStore.prototype.resetSeason = function () { this.data.matches = []; this.data.reports = {}; this.data.adjusts = []; this._save(); return Promise.resolve(); };
